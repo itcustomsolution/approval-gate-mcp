@@ -1,0 +1,27 @@
+{
+  "name": "approval-gate-mcp",
+  "version": "0.1.0",
+  "description": "Fail-closed human approval gates for AI agent actions, as an MCP server. Default-deny, TTL expiry, append-only audit log.",
+  "type": "module",
+  "bin": {
+    "approval-gate": "dist/cli.js",
+    "approval-gate-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["mcp", "model-context-protocol", "ai-agents", "human-in-the-loop", "governance", "approval", "guardrails"],
+  "author": "Olufela 'Lu' Fagbure <lu@itcustomsolution.com> (https://itcustomsolution.com)",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
