@@ -8,16 +8,29 @@
     "approval-gate-mcp": "dist/index.js"
   },
   "main": "dist/index.js",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js"
   },
-  "keywords": ["mcp", "model-context-protocol", "ai-agents", "human-in-the-loop", "governance", "approval", "guardrails"],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "human-in-the-loop",
+    "governance",
+    "approval",
+    "guardrails"
+  ],
   "author": "Olufela 'Lu' Fagbure <lu@itcustomsolution.com> (https://itcustomsolution.com)",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "hono": "^4.13.8",
     "zod": "^3.23.8"
   },
   "devDependencies": {
