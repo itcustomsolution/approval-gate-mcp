@@ -20,7 +20,8 @@ test("new requests start pending (not approved)", async () => {
 test("approve and deny are recorded and final", async () => {
   const a = await store.createRequest("a", "r", 3600);
   assert.equal((await store.decide(a.id, true, "ok")).status, "approved");
-  await assert.rejects(store.decide(a.id, false), /already approved/);
+  await assert.rejects(store.decide(a.id, true), /already approved/);
+  assert.equal((await store.decide(a.id, false)).effectiveStatus, "revoked"); // deny after approve = revoke
   const d = await store.createRequest("d", "r", 3600);
   assert.equal((await store.decide(d.id, false, "no")).status, "denied");
 });

@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security (follow-ups to the #24 review threads and an independent audit)
+- Status responses never authorize: `authorizesExecution: false` and `effectiveStatus`. Tool texts no
+  longer say that `approved` authorizes. Added an `assertConsumed()` helper for execution boundaries.
+- Upgrade: existing permissive state dirs, request files and `audit.jsonl` are chmodded to 0700/0600.
+  Symlinked or foreign-owned paths are refused.
+- Markers are created complete (fsynced temp file plus link(2)). An approval is consumable only after
+  its record and audit are persisted (`.committed`). Write or audit failures invalidate it.
+- Expiry is decided at claim time for approvals and re-checked after the use claim. Revocation is added
+  (`approval-gate revoke`, or deny on an approved request).
+- Escaping now covers U+061C, U+200B–U+200F, U+2060–U+2069 and U+FEFF.
+- Docs: authorization state machine, trust limitations, trusted-executor design proposal.
+
 ## [0.2.0] - 2026-10-15
 
 **Breaking:** scripted approvals no longer work. `approval-gate approve` now requires an interactive

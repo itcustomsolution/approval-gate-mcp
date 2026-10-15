@@ -62,7 +62,7 @@ test("exploit: replay an approval twice -> second use refused", async () => {
   await store.decide(r.id, true);
   assert.equal((await store.consumeApproval(r.id, "pay invoice 1")).ok, true);
   const again = await store.consumeApproval(r.id, "pay invoice 1");
-  assert.deepEqual([again.ok, again.error], [false, "already_consumed"]);
+  assert.deepEqual([again.ok, again.effectiveStatus], [false, "consumed"]);
 });
 
 test("exploit: concurrent replay -> exactly one consumption wins", async () => {
@@ -88,7 +88,7 @@ test("exploit: approval used after the request's expiry -> refused", async () =>
   const j = JSON.parse(readFileSync(reqFile(r.id), "utf8"));
   j.expiresAt = new Date(Date.now() - 1000).toISOString();
   writeFileSync(reqFile(r.id), JSON.stringify(j));
-  assert.equal((await store.consumeApproval(r.id, "late")).error, "approval_expired");
+  assert.equal((await store.consumeApproval(r.id, "late")).effectiveStatus, "approved_expired");
 });
 
 test("exploit: race approve vs deny -> exactly one terminal decision", async () => {
@@ -107,7 +107,8 @@ test("exploit: hand-edit state file to 'approved' -> consume refuses (no decisio
   const j = JSON.parse(readFileSync(reqFile(r.id), "utf8"));
   j.status = "approved";
   writeFileSync(reqFile(r.id), JSON.stringify(j));
-  assert.equal((await store.consumeApproval(r.id, "forge")).error, "decision_record_mismatch");
+  assert.equal((await store.consumeApproval(r.id, "forge")).ok, false);
+  assert.equal((await store.getRequest(r.id)).status, "denied"); // terminal JSON without a decision record fails closed
 });
 
 test("exploit: tampered expiresAt (unparseable) must not mean 'never expires'", async () => {

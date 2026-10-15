@@ -21,7 +21,7 @@ function text(data: unknown) {
 
 server.tool(
   "request_approval",
-  "Register a consequential action for human approval BEFORE performing it. Returns a request id. The action is NOT executed by this server; the calling agent must check approval status and only proceed on an explicit 'approved'. Anything else means no (fail closed).",
+  "Register a consequential action for human approval BEFORE performing it. Returns a request id. The action is NOT executed by this server; status 'approved' does NOT authorize anything by itself. Right before acting, call consume_approval with the same id and the exact action text; proceed only on ok:true. Anything else means no (fail closed).",
   {
     action: z.string().min(1).describe("Precise description of the action you intend to take, e.g. 'send email to alice@example.com with subject X'"),
     reason: z.string().min(1).describe("Why this action is needed right now"),
@@ -34,14 +34,14 @@ server.tool(
       id: req.id,
       status: req.status,
       expiresAt: req.expiresAt,
-      note: `A human must run: approval-gate approve ${req.id}  (or: approval-gate deny ${req.id}). Poll with check_approval or block with wait_for_approval. Do not proceed without an explicit 'approved'.`,
+      note: `A human must run: approval-gate approve ${req.id}  (or: approval-gate deny ${req.id}). Poll with check_approval or block with wait_for_approval. Even after 'approved', do not proceed until consume_approval returns ok:true.`,
     });
   },
 );
 
 server.tool(
   "check_approval",
-  "Check the current status of an approval request. Statuses: pending, approved, denied, expired. Only 'approved' authorizes the action.",
+  "Check the current status of an approval request. Informational only: no status here authorizes execution (authorizesExecution is always false). See effectiveStatus (approved_unconsumed, approved_expired, consumed, revoked, ...). Only consume_approval ok:true authorizes.",
   { id: z.string().min(1).describe("The request id returned by request_approval") },
   async ({ id }) => {
     const req = await getRequest(id);
@@ -52,7 +52,7 @@ server.tool(
 
 server.tool(
   "wait_for_approval",
-  "Block until a human decides the request, it expires, or the timeout elapses. Returns the final (or still-pending) request. A timeout returns status 'pending': treat it as NOT approved.",
+  "Block until a human decides the request, it expires, or the timeout elapses. Returns the final (or still-pending) request. Informational only; it never authorizes execution. A timeout returns 'pending' (not approved). After 'approved', call consume_approval and proceed only on ok:true.",
   {
     id: z.string().min(1).describe("The request id returned by request_approval"),
     timeout_seconds: z.number().int().min(1).max(3600).default(300).describe("Maximum time to wait (default 5 minutes)"),
@@ -63,7 +63,7 @@ server.tool(
     for (;;) {
       const req = await getRequest(id);
       if (!req) return text({ error: `No request with id ${id}` });
-      if (req.status !== "pending") return text(req);
+      if (req.status !== "pending") return text({ ...req, note: "Not an authorization. Call consume_approval(id, exact action) and proceed only on ok:true." });
       if (Date.now() >= deadline) return text({ ...req, note: "Timed out while pending. Not approved. Do not proceed." });
       await new Promise((r) => setTimeout(r, Math.min(poll_seconds * 1000, Math.max(0, deadline - Date.now()))));
     }
@@ -87,7 +87,7 @@ server.tool(
   "decide_approval",
   allowMcpApprove
     ? "Record a human decision on a pending request. Only for sessions a human is driving; never self-approve. Prefer the CLI: approval-gate approve <id>."
-    : "Deny (cancel) a pending request. Approvals are not possible through MCP; a human must run `approval-gate approve <id>` in their own terminal.",
+    : "Deny a pending request, or revoke an approved-but-unconsumed one. Approvals are not possible through MCP; a human must run `approval-gate approve <id>` in their own terminal.",
   {
     id: z.string().min(1),
     approve: z.boolean().describe("true to approve (refused unless enabled by the operator), false to deny"),
