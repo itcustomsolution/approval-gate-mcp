@@ -5,11 +5,12 @@
  *   approval-gate list [pending|approved|denied|expired]
  *   approval-gate show <id>
  *   approval-gate approve <id> [reason...]
- *   approval-gate deny <id> [reason...]
+ *   approval-gate deny <id> [reason...]      (pending: deny; approved-unconsumed: revoke)
+ *   approval-gate revoke <id> [reason...]
  */
 import { createInterface } from "node:readline/promises";
 import { safe } from "./display.js";
-import { decide, getRequest, listRequests, gateDir, type RequestStatus } from "./store.js";
+import { revokeApproval, decide, getRequest, listRequests, gateDir, type RequestStatus } from "./store.js";
 
 function usage(): never {
   console.log(`approval-gate: human decisions for approval-gate-mcp (state dir: ${gateDir()})
@@ -18,18 +19,19 @@ Usage:
   approval-gate list [pending|approved|denied|expired]
   approval-gate show <id>
   approval-gate approve <id> [reason...]
-  approval-gate deny <id> [reason...]`);
+  approval-gate deny <id> [reason...]
+  approval-gate revoke <id> [reason...]`);
   process.exit(1);
 }
 
-function fmt(req: { id: string; status: string; createdAt: string; action: string; reason: string; requestedBy?: string }): string {
-  return `${safe(req.id)}  [${safe(req.status)}]  ${safe(req.createdAt)}\n  action: ${safe(req.action)}\n  reason: ${safe(req.reason)}${req.requestedBy ? `\n  by:     ${safe(req.requestedBy)}` : ""}`;
+function fmt(req: { effectiveStatus?: string; id: string; status: string; createdAt: string; action: string; reason: string; requestedBy?: string }): string {
+  return `${safe(req.id)}  [${safe(req.effectiveStatus ?? req.status)}]  ${safe(req.createdAt)}\n  action: ${safe(req.action)}\n  reason: ${safe(req.reason)}${req.requestedBy ? `\n  by:     ${safe(req.requestedBy)}` : ""}`;
 }
 
 /** Approvals require a human at an interactive terminal who re-types a short confirmation. */
 async function confirmApproval(id: string): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error("approve requires an interactive terminal (refusing: stdin/stdout is not a TTY). Run it yourself in your own terminal.");
+    throw new Error("approve requires an interactive terminal (stdin/stdout is not a TTY). This is a speed bump for non-interactive agents, not authentication: anything running as your OS user can still get around it.");
   }
   const req = await getRequest(id);
   if (!req) throw new Error(`No request with id ${id}`);
@@ -63,6 +65,11 @@ async function main() {
         process.exit(2);
       }
       console.log(JSON.stringify(req, null, 2).split("\n").map(safe).join("\n"));
+      return;
+    }
+    case "revoke": {
+      if (!arg) usage();
+      console.log(fmt(await revokeApproval(arg, rest.join(" ") || undefined)));
       return;
     }
     case "approve":

@@ -52,10 +52,14 @@ Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-
   first, then acts only on approval. Separation of decision and execution keeps the gate
   simple and auditable.
 - **Decisions are out-of-band.** A human approves or denies with a CLI in their own
-  terminal, not inside the agent's context. The MCP tools cannot approve, and the CLI refuses to
-  approve unless it runs in an interactive terminal and the human re-types part of the id. This
-  stops an agent that only has MCP access. It does **not** stop an agent that has a shell or file
-  access as your user; see [Threat model](#threat-model).
+  terminal, not inside the agent's context. The MCP tools cannot approve. The CLI asks for an
+  interactive terminal and a re-typed confirmation, which is a speed bump, **not authentication**:
+  anything running as your OS user (a shell, a PTY, or file access) can still get past it. See
+  [Threat model](#threat-model).
+- **Only `consume_approval` authorizes.** `status: "approved"` is informational. Status responses
+  carry `authorizesExecution: false` and an `effectiveStatus` (`approved_unconsumed`,
+  `approved_expired`, `consumed`, `revoked`, ...). Your trusted execution boundary must check a
+  consume result (`assertConsumed(result, id, action)` from the library) right before acting.
 - **Everything is audited.** Every request, decision, expiry, and consumption is appended to
   `~/.approval-gate/audit.jsonl` (an append-only convention, not a tamper-proof log).
 - **Requests expire.** Default TTL is 1 hour; a stale approval is not an approval.
@@ -109,7 +113,7 @@ Or in any MCP client config:
 | `wait_for_approval` | Block up to `timeout_seconds` for a decision. Timeout = still pending = **not approved**. |
 | `list_pending` | List requests awaiting a human. |
 | `consume_approval` | Call right before acting. Succeeds **once**, only if approved, unexpired, and `action` matches the approved text exactly. Anything else: do not proceed. |
-| `decide_approval` | Deny a pending request. Approving through MCP is refused by default, so an agent cannot approve its own request; approvals come from the CLI. Operators can opt in with `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` (not recommended). |
+| `decide_approval` | Deny a pending request, or revoke an approved one that has not been consumed. Approving through MCP is refused by default, so an agent cannot approve its own request; approvals come from the CLI. Operators can opt in with `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` (not recommended). |
 
 ## The human side
 
@@ -118,6 +122,7 @@ approval-gate list                # pending requests
 approval-gate show a1b2c3d4e5f6
 approval-gate approve a1b2c3d4e5f6 looks right, ship it
 approval-gate deny a1b2c3d4e5f6 wrong recipient
+approval-gate revoke a1b2c3d4e5f6 changed my mind   # approved but not yet consumed
 ```
 
 ## Suggested agent policy
@@ -149,16 +154,26 @@ What the gate does protect against:
 
 What it does **not** protect against:
 
-- **An agent with a shell or file access as your OS user.** It can drive a pseudo-terminal, edit
+- **Trust limitation, not a bug that has been fixed: an agent with a shell, a PTY, or file access as your OS user.** It can drive a pseudo-terminal, edit
   `~/.approval-gate/`, or simply skip the gate and perform the action. The gate is a cooperation
   protocol plus an audit trail, not a sandbox. For hard enforcement, run the agent as a separate
   OS user (or in a container) that cannot read or write the gate directory, and keep the gate's
   CLI for yourself.
+- **The actual payload.** `consume_approval` matches the action *text*. It cannot prove that the email,
+  SQL, or deploy the agent then runs equals what you read. That binding is cooperative. See
+  [docs/design-trusted-executor.md](docs/design-trusted-executor.md) for an enforced design (proposal only).
+- **Unattended, consequential use.** Without OS-level separation (see above), do not treat this gate as
+  the only control for unattended agents doing irreversible things. Keep those paths fail-closed, with
+  no automatic execution.
 - An agent that never calls the gate. Enforcement of *asking* is up to your agent's policy and tooling.
 - Tampering with `audit.jsonl` by anyone with write access to it.
 
 Setting `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` re-enables approval over MCP and removes the main
 protection. Only use it when a human is the only one driving the MCP client.
+
+State transitions, revocation, and crash behavior are specified in
+[docs/authorization-states.md](docs/authorization-states.md). `approval-gate revoke <id>` (or `deny`
+on an approved request) cancels an approval that has not been consumed yet.
 
 ## Why so small?
 
