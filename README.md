@@ -41,7 +41,7 @@ Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-
    `action: "send email to alice@example.com, subject: Invoice 1042"` and gets back id `a1b2c3d4e5f6`.
 2. It calls `wait_for_approval`. Nothing is sent.
 3. In your own terminal: `approval-gate list`, then `approval-gate approve a1b2c3d4e5f6 looks right`.
-4. The agent sees `approved` and sends. Had you denied, ignored it, or let it expire, the answer is no.
+4. The agent sees `approved`, calls `consume_approval` with the same id and the exact same action text (single use), and only then sends. Had you denied, ignored it, or let it expire, the answer is no.
 5. `~/.approval-gate/audit.jsonl` now has the request and your decision.
 
 ## Design principles
@@ -52,10 +52,15 @@ Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-
   first, then acts only on approval. Separation of decision and execution keeps the gate
   simple and auditable.
 - **Decisions are out-of-band.** A human approves or denies with a CLI in their own
-  terminal, not inside the agent's context, so the agent cannot talk itself through the gate.
-- **Everything is audited.** Every request, decision, and expiry is appended to
-  `~/.approval-gate/audit.jsonl`.
+  terminal, not inside the agent's context. The MCP tools cannot approve, and the CLI refuses to
+  approve unless it runs in an interactive terminal and the human re-types part of the id. This
+  stops an agent that only has MCP access. It does **not** stop an agent that has a shell or file
+  access as your user; see [Threat model](#threat-model).
+- **Everything is audited.** Every request, decision, expiry, and consumption is appended to
+  `~/.approval-gate/audit.jsonl` (an append-only convention, not a tamper-proof log).
 - **Requests expire.** Default TTL is 1 hour; a stale approval is not an approval.
+- **Approvals are single-use and bound to the action.** `consume_approval` succeeds once, only for
+  the exact action text that was approved, and only before the request's expiry.
 
 ## Install
 
@@ -103,6 +108,7 @@ Or in any MCP client config:
 | `check_approval` | Poll a request's status: `pending` / `approved` / `denied` / `expired`. |
 | `wait_for_approval` | Block up to `timeout_seconds` for a decision. Timeout = still pending = **not approved**. |
 | `list_pending` | List requests awaiting a human. |
+| `consume_approval` | Call right before acting. Succeeds **once**, only if approved, unexpired, and `action` matches the approved text exactly. Anything else: do not proceed. |
 | `decide_approval` | Deny a pending request. Approving through MCP is refused by default, so an agent cannot approve its own request; approvals come from the CLI. Operators can opt in with `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` (not recommended). |
 
 ## The human side
@@ -119,20 +125,47 @@ approval-gate deny a1b2c3d4e5f6 wrong recipient
 Put something like this in your agent's system prompt or policy file:
 
 > Before any outbound or destructive action (send, publish, delete, purchase, deploy),
-> call `request_approval` and then `wait_for_approval`. Proceed only if the returned
-> status is exactly `approved`. Never call `decide_approval` for your own requests.
+> call `request_approval` and then `wait_for_approval`. When it returns `approved`, call
+> `consume_approval` with the same id and exact action text, and proceed only if it returns
+> `ok: true`. Never call `decide_approval` for your own requests.
 
 ## State
 
 Everything lives in `~/.approval-gate/` (override with `APPROVAL_GATE_DIR`):
-`requests/*.json` for current state, `audit.jsonl` for the append-only history.
+`requests/*.json` for current state, `requests/*.final` / `*.used` one-time decision and
+consumption markers, and `audit.jsonl` for the history. The directory is created `0700` and
+files `0600`.
+
+## Threat model
+
+What the gate does protect against:
+
+- An agent that can only reach this server over MCP approving its own request (MCP cannot approve).
+- An agent driving the CLI from a non-interactive shell (`approve` requires a TTY plus a typed confirmation).
+- Reusing one approval for a second or different action (`consume_approval` is single-use and action-bound).
+- Using an approval after the request's expiry, races between approve/deny/expiry, guessed ids
+  (128-bit random), malformed or hand-edited state files without a matching decision record, and
+  terminal escape sequences in request text that try to disguise what you are approving.
+
+What it does **not** protect against:
+
+- **An agent with a shell or file access as your OS user.** It can drive a pseudo-terminal, edit
+  `~/.approval-gate/`, or simply skip the gate and perform the action. The gate is a cooperation
+  protocol plus an audit trail, not a sandbox. For hard enforcement, run the agent as a separate
+  OS user (or in a container) that cannot read or write the gate directory, and keep the gate's
+  CLI for yourself.
+- An agent that never calls the gate. Enforcement of *asking* is up to your agent's policy and tooling.
+- Tampering with `audit.jsonl` by anyone with write access to it.
+
+Setting `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` re-enables approval over MCP and removes the main
+protection. Only use it when a human is the only one driving the MCP client.
 
 ## Why so small?
 
 Because the pattern matters more than the plumbing. In my production systems this same
 shape (request, out-of-band human decision, fail-closed default, audit trail) sits in
-front of email, publishing, and deployments, and it has turned entire classes of
-automation incidents into structural impossibilities. Start small, gate the scary
+front of email, publishing, and deployments, and it has removed entire classes of
+automation incidents. Start small, gate the scary
 things, and let your incident postmortems tell you what to gate next.
 
 ## Contributing
