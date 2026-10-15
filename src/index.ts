@@ -13,7 +13,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { createRequest, decide, getRequest, listRequests, gateDir } from "./store.js";
 
-const server = new McpServer({ name: "approval-gate", version: "0.1.0" });
+const server = new McpServer({ name: "approval-gate", version: "0.1.1" });
 
 function text(data: unknown) {
   return { content: [{ type: "text" as const, text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
