@@ -103,7 +103,7 @@ Or in any MCP client config:
 | `check_approval` | Poll a request's status: `pending` / `approved` / `denied` / `expired`. |
 | `wait_for_approval` | Block up to `timeout_seconds` for a decision. Timeout = still pending = **not approved**. |
 | `list_pending` | List requests awaiting a human. |
-| `decide_approval` | Record a decision when the human is driving the session. Agents must never self-approve; prefer the CLI. |
+| `decide_approval` | Deny a pending request. Approving through MCP is refused by default, so an agent cannot approve its own request; approvals come from the CLI. Operators can opt in with `APPROVAL_GATE_ALLOW_MCP_APPROVE=1` (not recommended). |
 
 ## The human side
 

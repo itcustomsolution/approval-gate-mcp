@@ -77,15 +77,29 @@ server.tool(
   async () => text(await listRequests("pending")),
 );
 
+// Approving over MCP lets an agent approve its own request, which defeats the
+// gate. By default the MCP tool can only DENY (fail-closed); approvals must come
+// from the out-of-band CLI. Set APPROVAL_GATE_ALLOW_MCP_APPROVE=1 only when a
+// human is driving the session and you accept that risk.
+const allowMcpApprove = process.env.APPROVAL_GATE_ALLOW_MCP_APPROVE === "1";
+
 server.tool(
   "decide_approval",
-  "Record a human decision on a pending request. IMPORTANT: this tool exists for setups where the human is driving this very session and asks the agent to record their decision. An agent must NEVER call this on its own initiative to approve its own request; self-approval defeats the gate. Prefer the out-of-band CLI: approval-gate approve <id>.",
+  allowMcpApprove
+    ? "Record a human decision on a pending request. Only for sessions a human is driving; never self-approve. Prefer the CLI: approval-gate approve <id>."
+    : "Deny (cancel) a pending request. Approvals are not possible through MCP; a human must run `approval-gate approve <id>` in their own terminal.",
   {
     id: z.string().min(1),
-    approve: z.boolean().describe("true to approve, false to deny"),
+    approve: z.boolean().describe("true to approve (refused unless enabled by the operator), false to deny"),
     reason: z.string().optional().describe("Human's stated reason, verbatim"),
   },
   async ({ id, approve, reason }) => {
+    if (approve && !allowMcpApprove) {
+      return text({
+        error: "approval_via_mcp_disabled",
+        message: "Approvals cannot be made through MCP. Ask the human to run: approval-gate approve " + id,
+      });
+    }
     const req = await decide(id, approve, reason);
     return text(req);
   },
