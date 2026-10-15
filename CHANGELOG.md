@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-15
+
 ### Security (follow-ups to the #24 review threads and an independent audit)
 - Status responses never authorize: `authorizesExecution: false` and `effectiveStatus`. Tool texts no
   longer say that `approved` authorizes. Added an `assertConsumed()` helper for execution boundaries.
