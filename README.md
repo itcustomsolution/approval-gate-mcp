@@ -2,8 +2,7 @@
 
 > An MCP server that makes your AI agent stop and ask a human before it sends, deletes, publishes, pays or deploys.
 
-<!-- Badges: enable after first npm publish -->
-<!-- [![npm](https://img.shields.io/npm/v/approval-gate-mcp)](https://www.npmjs.com/package/approval-gate-mcp) -->
+[![npm](https://img.shields.io/npm/v/@itcustomsolution/approval-gate-mcp)](https://www.npmjs.com/package/@itcustomsolution/approval-gate-mcp)
 <!-- [![tests](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml) -->
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -18,12 +17,23 @@ generic, reusable version of that rule.
 ## 30-second quickstart
 
 ```bash
-git clone https://github.com/itcustomsolution/approval-gate-mcp.git
-cd approval-gate-mcp && npm install && npm run build && npm link
-claude mcp add approval-gate -- approval-gate-mcp   # or any MCP client, see below
+claude mcp add approval-gate -- npx -y @itcustomsolution/approval-gate-mcp
 ```
 
-Once published to npm this becomes `npx -y approval-gate-mcp`.
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "approval-gate": {
+      "command": "npx",
+      "args": ["-y", "@itcustomsolution/approval-gate-mcp"]
+    }
+  }
+}
+```
+
+Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-mcp approval-gate list`.
 
 ## Example
 
@@ -49,7 +59,13 @@ Once published to npm this becomes `npx -y approval-gate-mcp`.
 
 ## Install
 
-From source (today):
+From npm:
+
+```bash
+npm install -g @itcustomsolution/approval-gate-mcp   # installs `approval-gate` and `approval-gate-mcp`
+```
+
+From source:
 
 ```bash
 npm install
@@ -57,7 +73,6 @@ npm run build
 npm link        # makes `approval-gate` and `approval-gate-mcp` available on PATH
 ```
 
-From npm (after first release): `npm install -g approval-gate-mcp`.
 
 ## Wire it into an MCP client
 
