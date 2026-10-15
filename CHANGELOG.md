@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-15
+
+**Breaking:** scripted approvals no longer work. `approval-gate approve` now requires an interactive
+terminal with a typed confirmation, and agents must call `consume_approval(id, action)` (single-use,
+bound to the exact approved action) before acting instead of relying on an `approved` status alone.
+
 ### Security (from the 2026-10 adversarial audit)
 - New `consume_approval(id, action)` tool: single-use, bound to the exact approved action text,
   refused after the request's expiry. Previously one `approved` id could be reused for any number of
