@@ -7,6 +7,8 @@
  *   approval-gate approve <id> [reason...]
  *   approval-gate deny <id> [reason...]
  */
+import { createInterface } from "node:readline/promises";
+import { safe } from "./display.js";
 import { decide, getRequest, listRequests, gateDir, type RequestStatus } from "./store.js";
 
 function usage(): never {
@@ -20,8 +22,23 @@ Usage:
   process.exit(1);
 }
 
-function fmt(req: { id: string; status: string; createdAt: string; action: string; reason: string }): string {
-  return `${req.id}  [${req.status}]  ${req.createdAt}\n  action: ${req.action}\n  reason: ${req.reason}`;
+function fmt(req: { id: string; status: string; createdAt: string; action: string; reason: string; requestedBy?: string }): string {
+  return `${safe(req.id)}  [${safe(req.status)}]  ${safe(req.createdAt)}\n  action: ${safe(req.action)}\n  reason: ${safe(req.reason)}${req.requestedBy ? `\n  by:     ${safe(req.requestedBy)}` : ""}`;
+}
+
+/** Approvals require a human at an interactive terminal who re-types a short confirmation. */
+async function confirmApproval(id: string): Promise<void> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("approve requires an interactive terminal (refusing: stdin/stdout is not a TTY). Run it yourself in your own terminal.");
+  }
+  const req = await getRequest(id);
+  if (!req) throw new Error(`No request with id ${id}`);
+  console.log(fmt(req) + "\n");
+  const code = id.slice(-4);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const answer = (await rl.question(`Type the last 4 characters of the id (${"*".repeat(id.length - 4)}????) to approve: `)).trim();
+  rl.close();
+  if (answer !== code) throw new Error("Confirmation did not match. Not approved.");
 }
 
 async function main() {
@@ -42,15 +59,16 @@ async function main() {
       if (!arg) usage();
       const req = await getRequest(arg);
       if (!req) {
-        console.error(`No request with id ${arg}`);
+        console.error(`No request with id ${safe(arg)}`);
         process.exit(2);
       }
-      console.log(JSON.stringify(req, null, 2));
+      console.log(JSON.stringify(req, null, 2).split("\n").map(safe).join("\n"));
       return;
     }
     case "approve":
     case "deny": {
       if (!arg) usage();
+      if (cmd === "approve") await confirmApproval(arg);
       const req = await decide(arg, cmd === "approve", rest.join(" ") || undefined);
       console.log(fmt(req));
       return;

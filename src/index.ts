@@ -11,7 +11,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { createRequest, decide, getRequest, listRequests, gateDir } from "./store.js";
+import { createRequest, decide, getRequest, listRequests, gateDir, consumeApproval } from "./store.js";
 
 const server = new McpServer({ name: "approval-gate", version: "0.1.1" });
 
@@ -103,6 +103,16 @@ server.tool(
     const req = await decide(id, approve, reason);
     return text(req);
   },
+);
+
+server.tool(
+  "consume_approval",
+  "Call this IMMEDIATELY before performing an approved action. Succeeds exactly once per request, only if the request is approved, not past its expiry, and `action` is byte-for-byte the text that was approved. ok:false for any reason means do NOT proceed. An approval cannot be reused for a second or different action.",
+  {
+    id: z.string().min(1).describe("The request id returned by request_approval"),
+    action: z.string().min(1).describe("The exact action text you passed to request_approval"),
+  },
+  async ({ id, action }) => text(await consumeApproval(id, action)),
 );
 
 async function main() {
