@@ -1,13 +1,38 @@
 # approval-gate-mcp
 
-**Fail-closed human approval gates for AI agent actions, as an MCP server.**
+> An MCP server that makes your AI agent stop and ask a human before it sends, deletes, publishes, pays or deploys.
 
+<!-- Badges: enable after first npm publish -->
+<!-- [![npm](https://img.shields.io/npm/v/approval-gate-mcp)](https://www.npmjs.com/package/approval-gate-mcp) -->
+<!-- [![tests](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml) -->
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Why
 Agents are good at doing things. The hard part is making sure the consequential things
 (sending an email, deleting data, publishing, spending money) only happen when a human
 said yes. This server is that gate, extracted from a system I have run in production
 for years: after an automation incident taught me the lesson the hard way, my standing
 rule became *no automated destructive action without a human gate, ever*. This is the
 generic, reusable version of that rule.
+
+## 30-second quickstart
+
+```bash
+git clone https://github.com/itcustomsolution/approval-gate-mcp.git
+cd approval-gate-mcp && npm install && npm run build && npm link
+claude mcp add approval-gate -- approval-gate-mcp   # or any MCP client, see below
+```
+
+Once published to npm this becomes `npx -y approval-gate-mcp`.
+
+## Example
+
+1. Your agent wants to email a customer. It calls `request_approval` with
+   `action: "send email to alice@example.com, subject: Invoice 1042"` and gets back id `a1b2c3d4e5f6`.
+2. It calls `wait_for_approval`. Nothing is sent.
+3. In your own terminal: `approval-gate list`, then `approval-gate approve a1b2c3d4e5f6 looks right`.
+4. The agent sees `approved` and sends. Had you denied, ignored it, or let it expire, the answer is no.
+5. `~/.approval-gate/audit.jsonl` now has the request and your decision.
 
 ## Design principles
 
@@ -24,11 +49,15 @@ generic, reusable version of that rule.
 
 ## Install
 
+From source (today):
+
 ```bash
 npm install
 npm run build
 npm link        # makes `approval-gate` and `approval-gate-mcp` available on PATH
 ```
+
+From npm (after first release): `npm install -g approval-gate-mcp`.
 
 ## Wire it into an MCP client
 
@@ -90,6 +119,16 @@ shape (request, out-of-band human decision, fail-closed default, audit trail) si
 front of email, publishing, and deployments, and it has turned entire classes of
 automation incidents into structural impossibilities. Start small, gate the scary
 things, and let your incident postmortems tell you what to gate next.
+
+## Contributing
+
+Issues and pull requests are welcome. Keep changes small and fail-closed: anything that
+could turn a "no" into a "yes" needs a test. Run `npm test` before opening a PR.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
 
 ---
 

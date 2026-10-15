@@ -2,6 +2,7 @@
   "name": "approval-gate-mcp",
   "version": "0.1.0",
   "description": "Fail-closed human approval gates for AI agent actions, as an MCP server. Default-deny, TTL expiry, append-only audit log.",
+  "mcpName": "io.github.itcustomsolution/approval-gate-mcp",
   "type": "module",
   "bin": {
     "approval-gate": "dist/cli.js",
@@ -11,11 +12,14 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build && node --test test/*.test.mjs"
   },
   "keywords": [
     "mcp",
@@ -24,7 +28,13 @@
     "human-in-the-loop",
     "governance",
     "approval",
-    "guardrails"
+    "guardrails",
+    "mcp-server",
+    "ai-safety",
+    "agent-approval",
+    "audit-log",
+    "claude",
+    "codex"
   ],
   "author": "Olufela 'Lu' Fagbure <lu@itcustomsolution.com> (https://itcustomsolution.com)",
   "license": "MIT",
@@ -36,5 +46,16 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
+  },
+  "homepage": "https://github.com/itcustomsolution/approval-gate-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/itcustomsolution/approval-gate-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/itcustomsolution/approval-gate-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
