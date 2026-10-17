@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.0-rc.2] - unreleased candidate (2026-10-17, not published; 0.4.0-rc.1 of 2026-10-16 was the independently audited candidate)
+## [0.4.0-rc.3] - unreleased candidate (2026-10-17, not published; 0.4.0-rc.1 of 2026-10-16 and 0.4.0-rc.2 of 2026-10-17 were the independently audited candidates)
 
 **Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
 `list_pending` returns `{items, nextCursor}`; request text, payload and queue limits are enforced; library TTLs over
@@ -55,6 +55,9 @@ All notable changes to this project are documented here. The format follows
   still reads as revoked.
 - `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
   for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
+- Before release (2026-10-17, pre-existing on rc.1 and rc.2): two archive runs at once no longer crash one of them
+  with `ENOENT`; the start-up permission sweep skips a state file that the other run moved after it was listed (RV-01
+  had covered the moves themselves, not this sweep). The final state was already correct in every run.
 
 ## [0.3.0] - 2026-10-15
 
