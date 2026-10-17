@@ -39,3 +39,32 @@ for (const vanishAt of ["lstat", "chmod"]) {
     assert.equal(out.pending, 0);
   });
 }
+
+// OM-R3-AG-01: the sweep skips a file only when it is really gone. A file swapped for a dangling symlink at the chmod
+// step must still be refused, as r2 did, and never served once the symlink's target appears.
+test("OM-R3-AG-01: a state file swapped for a dangling symlink during the sweep is refused, not skipped", () => {
+  const dir = mkdtempSync(join(tmpdir(), "approval-gate-swap-"));
+  const setup = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    const s = await import(${JSON.stringify(storeUrl)}); const r = await s.createRequest("synthetic action", "r", 3600); console.log(r.id);
+  `], { env: { ...process.env, APPROVAL_GATE_DIR: dir }, encoding: "utf8", timeout: 10000 });
+  assert.equal(setup.status, 0, setup.stderr);
+  const id = setup.stdout.trim();
+  const req = join(dir, "requests", `${id}.json`);
+  chmodSync(req, 0o644);
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import { promises as fsp, symlinkSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
+    const req = ${JSON.stringify(req)}, target = ${JSON.stringify(join(dir, "not-yet"))};
+    const decoy = readFileSync(req, "utf8").replace("synthetic action", "DECOY ACTION");
+    const real = fsp.chmod; let done = false;
+    fsp.chmod = async function (p, ...r) { if (!done && String(p) === req) { done = true; unlinkSync(p); symlinkSync(target, p); } return real.call(this, p, ...r); };
+    const s = await import(${JSON.stringify(storeUrl)});
+    const out = {};
+    try { out.list = (await s.listRequests()).length; } catch (e) { out.list = "refused: " + e.message; }
+    writeFileSync(target, decoy);
+    try { const v = await s.getRequest(${JSON.stringify(id)}); out.read = v ? v.action : null; } catch (e) { out.read = "refused: " + e.message; }
+    console.log(JSON.stringify(out));
+  `], { env: { ...process.env, APPROVAL_GATE_DIR: dir }, encoding: "utf8", timeout: 10000 });
+  const out = JSON.parse(child.stdout.trim().split("\n").pop() || "{}");
+  assert.match(String(out.list), /^refused: .*symlink/, child.stderr);
+  assert.notEqual(out.read, "DECOY ACTION");
+});

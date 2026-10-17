@@ -248,9 +248,16 @@ async function ensureDirs(): Promise<void> {
     // One-time upgrade sweep: request/marker files written by <=0.1.x with 0644.
     for await (const f of streamEntries()) {
       if (f.endsWith(".tmp")) continue;
-      // A concurrent archive run may move a listed file before it is checked; a missing file needs no tightening.
-      await securePath(path.join(requestsDir(), f), "file", 0o600).catch((err: NodeJS.ErrnoException) => {
+      // A concurrent archive run may move a listed file before it is checked; a file that is really gone needs no
+      // tightening. Whatever is at the path now (a symlink swapped in, say) is checked again and still refuses.
+      const p = path.join(requestsDir(), f);
+      await securePath(p, "file", 0o600).catch(async (err: NodeJS.ErrnoException) => {
         if (err.code !== "ENOENT") throw err;
+        const now = await fs.lstat(p).catch((e: NodeJS.ErrnoException) => {
+          if (e.code === "ENOENT") return undefined;
+          throw e;
+        });
+        if (now) await securePath(p, "file", 0o600);
       });
     }
     migratedFor = gateDir();
