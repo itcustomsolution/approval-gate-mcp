@@ -248,7 +248,10 @@ async function ensureDirs(): Promise<void> {
     // One-time upgrade sweep: request/marker files written by <=0.1.x with 0644.
     for await (const f of streamEntries()) {
       if (f.endsWith(".tmp")) continue;
-      await securePath(path.join(requestsDir(), f), "file", 0o600);
+      // A concurrent archive run may move a listed file before it is checked; a missing file needs no tightening.
+      await securePath(path.join(requestsDir(), f), "file", 0o600).catch((err: NodeJS.ErrnoException) => {
+        if (err.code !== "ENOENT") throw err;
+      });
     }
     migratedFor = gateDir();
   }
