@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.0-rc.1] - unreleased candidate (2026-10-16, not published)
+## [0.4.0-rc.2] - unreleased candidate (2026-10-17, not published; 0.4.0-rc.1 of 2026-10-16 was the independently audited candidate)
 
 **Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
 `list_pending` returns `{items, nextCursor}`; request text, payload and queue limits are enforced; library TTLs over

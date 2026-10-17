@@ -1,6 +1,6 @@
 # Design: canonical-payload trusted executor
 
-Status (0.4.0-rc.1): steps 1, 2 and the consume/expiry part of step 4 are implemented **in-process**:
+Status (0.4.0-rc.2): steps 1, 2 and the consume/expiry part of step 4 are implemented **in-process**:
 requests can bind an `operation` and an RFC 8785 canonical JSON `payload` (SHA-256 digest), the CLI
 shows them to the human, and `executeApproved` consumes, re-checks expiry and hands the trusted
 function a frozen copy of the approved payload. Steps 3, 5 and 6 (a separate executor identity
