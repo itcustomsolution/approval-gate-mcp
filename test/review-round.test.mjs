@@ -145,3 +145,16 @@ test("VF-01: a move interrupted between link and unlink is completed by the next
   assert.deepEqual(readdirSync(join(dir, "requests")).filter((f) => f.startsWith(r.id)), []);
   assert.deepEqual(readdirSync(join(dir, "archive")).filter((f) => f.startsWith(r.id)).sort(), [`${r.id}.final`, `${r.id}.json`]);
 });
+
+test("RV-01: two overlapping archive runs both finish without an error", async () => {
+  const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+  for (let i = 0; i < 20; i++) {
+    const r = await store.createRequest(`a${i}`, "r", 3600);
+    await store.decide(r.id, false);
+    edit(r.id, { createdAt: old, expiresAt: old });
+  }
+  const runs = await Promise.allSettled([store.archiveRequests(8), store.archiveRequests(8)]);
+  assert.deepEqual(runs.map((x) => x.status), ["fulfilled", "fulfilled"], String(runs.map((x) => x.reason)));
+  assert.deepEqual(readdirSync(join(dir, "requests")).filter((f) => f.endsWith(".json")), []);
+  assert.equal(readdirSync(join(dir, "archive")).filter((f) => f.endsWith(".json")).length, 20);
+});

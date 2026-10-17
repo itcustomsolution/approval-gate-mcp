@@ -556,7 +556,10 @@ async function moveNoClobber(from: string, to: string): Promise<boolean> {
       throw err;
     }
   }
-  await fs.unlink(from);
+  // A concurrent archive run may have completed the same move first.
+  await fs.unlink(from).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== "ENOENT") throw err;
+  });
   return true;
 }
 
