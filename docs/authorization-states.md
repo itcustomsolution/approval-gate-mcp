@@ -86,7 +86,9 @@ retries an execution.
 before the 7-day TTL cap: an archived approval is always past its deadline. Consume also re-reads the record
 and its markers after winning `.used`, so a record moved or replaced during the claim is refused and stays
 spent. The `.json` record moves first, so a crash part-way leaves only orphan markers, which read as "not
-found" and are moved by the next run. Nothing in `archive/` is ever replaced. Pending and
+found" and are moved by the next run. Each move is a hard link followed by removing the original; a crash between
+the two leaves the same file in both places, and the next run completes the move. Nothing in `archive/` is ever
+replaced, so a marker written for an id after it was archived stays in `requests/` (it reads as "not found"). Pending and
 approved-unconsumed requests are never archived.
 
 An existing marker that cannot be read (too large, wrong type, no permission, empty) counts as a decision

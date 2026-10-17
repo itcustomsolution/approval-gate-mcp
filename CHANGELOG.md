@@ -40,6 +40,8 @@ All notable changes to this project are documented here. The format follows
   blank and variation selectors as well as controls (OM-04); the MCP server's stderr banner is escaped (OM-09).
 - Payloads may not use the object key `"__proto__"` (OM-05). Orphan markers from an interrupted archive are moved by the
   next run (OM-07). An extreme negative TTL gets the documented `ttlSeconds` error (OM-08).
+- An archive move interrupted between its hard link and the removal of the original is completed by the next run
+  (final verification VF-01).
 - `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
   for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
 

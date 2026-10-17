@@ -2,7 +2,7 @@
 // dirs only. Races are emulated by patching fs.promises in this test process, never in production code.
 import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, renameSync, chmodSync, promises as fsp } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, renameSync, chmodSync, linkSync, promises as fsp } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,4 +132,16 @@ test("OM-09: the MCP server's stderr banner escapes the state directory", () => 
   const p = spawnSync(process.execPath, [new URL("../dist/index.js", import.meta.url).pathname], { env: { ...process.env, APPROVAL_GATE_DIR: weird }, input: "", encoding: "utf8", timeout: 5000 });
   assert.match(p.stderr, /ready \(state dir: .*x\\u001b\[2J\)/);
   assert.ok(!p.stderr.includes("\u001b"));
+});
+
+test("VF-01: a move interrupted between link and unlink is completed by the next archive run", async () => {
+  const r = await store.createRequest("a", "r", 3600);
+  await store.decide(r.id, false);
+  const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+  edit(r.id, { createdAt: old, expiresAt: old });
+  mkdirSync(join(dir, "archive"), { mode: 0o700 });
+  linkSync(reqFile(r.id), join(dir, "archive", `${r.id}.json`)); // crash after link(), before unlink()
+  assert.equal(await store.archiveRequests(8), 1);
+  assert.deepEqual(readdirSync(join(dir, "requests")).filter((f) => f.startsWith(r.id)), []);
+  assert.deepEqual(readdirSync(join(dir, "archive")).filter((f) => f.startsWith(r.id)).sort(), [`${r.id}.final`, `${r.id}.json`]);
 });

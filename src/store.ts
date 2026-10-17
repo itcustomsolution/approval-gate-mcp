@@ -538,13 +538,23 @@ export async function listRequests(status?: RequestStatus): Promise<RequestView[
   return (await allViews()).filter((r) => !status || r.status === status).sort(byCreated);
 }
 
-/** Moves without replacing: false if the source is gone or the destination already exists. */
+/**
+ * Moves without replacing: false if the source is gone or a different file already exists at the destination.
+ * If the destination is the same file (a crash between link and unlink), the interrupted move is completed.
+ */
 async function moveNoClobber(from: string, to: string): Promise<boolean> {
   try {
     await fs.link(from, to);
   } catch (err) {
-    if (["ENOENT", "EEXIST"].includes((err as NodeJS.ErrnoException).code ?? "")) return false;
-    throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EEXIST") {
+      const [a, b] = await Promise.all([fs.lstat(from), fs.lstat(to)]).catch(() => [undefined, undefined]);
+      if (!a || !b || a.ino !== b.ino || a.dev !== b.dev) return false;
+    } else if (code === "ENOENT") {
+      return false;
+    } else {
+      throw err;
+    }
   }
   await fs.unlink(from);
   return true;
@@ -558,7 +568,9 @@ const MARKER_FILE_RE = /^([0-9a-f]{12,64})\.(final|committed|used)$/;
  * older versions without the 7-day TTL cap: an archived approval is always past its deadline, and consume
  * re-checks the record after its claim, so nothing archived can be decided or consumed. The .json record moves
  * first: a crash part-way leaves orphan markers, which read as "not found" (fail closed) and are moved by the next
- * run. Entries are streamed, so this works at any directory size. Nothing in archive/ is ever replaced.
+ * run, as is a file left in both places by a crash between link and unlink. A marker written for an id after it was
+archived stays in requests/ (it reads as "not found"). Entries are streamed, so this works at any directory size.
+Nothing in archive/ is ever replaced.
  */
 export async function archiveRequests(olderThanDays = 30): Promise<number> {
   if (!Number.isInteger(olderThanDays) || olderThanDays < 8 || olderThanDays > 36_500) {
