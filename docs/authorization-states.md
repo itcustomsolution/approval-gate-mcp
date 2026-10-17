@@ -7,7 +7,7 @@ with link(2) so they are complete when visible and only one writer can create ea
 |---|---|---|
 | `<id>.final` | `approved` / `denied` / `expired` | The single terminal decision. **Authoritative** over `<id>.json`. |
 | `<id>.committed` | `committed` | Written only after the approval's JSON record **and** audit line were persisted (fsync). |
-| `<id>.used` | `consume-claimed <iso>` / `revoked` / `invalidated:<why>` | The single use-or-kill transition for an approval. |
+| `<id>.used` | `consume-claimed <iso>` / `revoked <iso>` (earlier versions: `revoked`) / `invalidated:<why>` | The single use-or-kill transition for an approval. |
 
 A request may also carry an `operation` name and a `payloadCanonical` (RFC 8785 canonical JSON) with
 its SHA-256 `payloadDigest`. A record whose canonical payload does not hash to its digest is treated

@@ -412,7 +412,7 @@ async function effective(req: ApprovalRequest): Promise<EffectiveStatus> {
   if (req.status !== "approved") return req.status;
   const used = await readMarker(req.id, "used");
   if (used?.startsWith("consume")) return "consumed";
-  if (used === "revoked") return "revoked";
+  if (used === "revoked" || used?.startsWith("revoked ")) return "revoked";
   if (used !== undefined) return "invalidated";
   if ((await readMarker(req.id, "committed")) !== "committed") return "approved_uncommitted";
   if (isPastExpiry(req)) return "approved_expired";
@@ -422,7 +422,13 @@ async function effective(req: ApprovalRequest): Promise<EffectiveStatus> {
 export async function getRequest(id: string): Promise<RequestView | undefined> {
   const req = await reconciled(id);
   if (!req) return undefined;
-  return { ...req, effectiveStatus: await effective(req), authorizesExecution: false };
+  const effectiveStatus = await effective(req);
+  if (effectiveStatus === "revoked" && req.revokedAt === undefined) {
+    // A late revocation records its time only in the .used marker ("revoked <ISO time>"); see revokeApproval.
+    const at = (await readMarker(id, "used"))?.slice("revoked ".length);
+    if (at && !Number.isNaN(Date.parse(at))) return { ...req, revokedAt: at, effectiveStatus, authorizesExecution: false };
+  }
+  return { ...req, effectiveStatus, authorizesExecution: false };
 }
 
 /** Ids with a request record but no decision marker: what awaits a human. Directory listing only. */
@@ -627,10 +633,11 @@ export async function revokeApproval(id: string, reason?: string): Promise<Reque
   const req = await reconciled(id);
   if (!req) throw new Error(`No request with id ${id}`);
   if (req.status !== "approved") throw new Error(`Request ${id} is ${req.status}, not approved`);
-  if (!(await claimMarker(markerPath(id, "used"), "revoked"))) {
+  const revokedAt = new Date().toISOString();
+  if (!(await claimMarker(markerPath(id, "used"), `revoked ${revokedAt}`))) {
     throw new Error(`Request ${id} is already ${await effective(req)}`);
   }
-  const revoked = { ...req, revokedAt: new Date().toISOString() };
+  const revoked = { ...req, revokedAt };
   // The .used marker is the record of revocation. A long-expired approval may be an archive candidate, so its
   // JSON file is not rewritten (that could recreate an archived record; re-audit RA-AG-02).
   if (!isPastExpiry(req)) await writeRequest(revoked).catch(() => {});

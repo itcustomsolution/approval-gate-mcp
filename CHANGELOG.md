@@ -48,6 +48,11 @@ All notable changes to this project are documented here. The format follows
   finished record without its decision marker no longer counts against the pending queue (RA-AG-02); the CLI escapes
   literal backslashes as well, so different action or reason text never displays the same (RA-AG-03). The npm
   package now includes the two design documents the README links to.
+- Visible effects of that change: an expired request's `decidedAt` is its `expiresAt` (it was the moment expiry was
+  first observed) and is the same on every read; its JSON file keeps `"status": "pending"`, so read status through
+  the library, MCP or CLI. The `.used` marker of a revocation now carries its time (`revoked <ISO time>`), and views
+  take `revokedAt` from it when the request file was not rewritten; a bare `revoked` marker from an earlier version
+  still reads as revoked.
 - `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
   for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
 

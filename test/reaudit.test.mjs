@@ -131,3 +131,27 @@ test("RA-AG-03: the CLI shows a real invisible character and its literal escape 
   assert.notEqual(shown(real.id), shown(literal.id));
   assert.ok(shown(literal.id).includes("\\\\u200b") && !shown(literal.id).includes("\\\\\\\\"), shown(literal.id)); // JSON escape kept once
 });
+
+test("OM-R2-AG-01: a late revocation keeps its time in every later view", async () => {
+  const r = await store.createRequest("late", "r", 3600);
+  await store.decide(r.id, true);
+  const past = new Date(Date.now() - 1000).toISOString();
+  writeFileSync(reqFile(r.id), JSON.stringify({ ...JSON.parse(readFileSync(reqFile(r.id), "utf8")), expiresAt: past }));
+  const revoked = await store.revokeApproval(r.id);
+  assert.equal(revoked.effectiveStatus, "revoked");
+  assert.equal(JSON.parse(readFileSync(reqFile(r.id), "utf8")).revokedAt, undefined); // the file is not rewritten
+  const later = await store.getRequest(r.id);
+  assert.equal(later.effectiveStatus, "revoked");
+  assert.equal(later.revokedAt, revoked.revokedAt);
+  assert.equal(readFileSync(join(dir, "requests", `${r.id}.used`), "utf8"), `revoked ${revoked.revokedAt}`);
+});
+
+test("OM-R2-AG-01: a bare revoked marker from an earlier version still reads as revoked", async () => {
+  const r = await store.createRequest("old marker", "r", 3600);
+  await store.decide(r.id, true);
+  writeFileSync(join(dir, "requests", `${r.id}.used`), "revoked");
+  const v = await store.getRequest(r.id);
+  assert.equal(v.effectiveStatus, "revoked");
+  assert.equal(v.revokedAt, undefined);
+  assert.equal((await store.consumeApproval(r.id, "old marker")).ok, false);
+});
