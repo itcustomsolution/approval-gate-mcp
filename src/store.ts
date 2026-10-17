@@ -426,7 +426,9 @@ export async function getRequest(id: string): Promise<RequestView | undefined> {
   if (effectiveStatus === "revoked" && req.revokedAt === undefined) {
     // A late revocation records its time only in the .used marker ("revoked <ISO time>"); see revokeApproval.
     const at = (await readMarker(id, "used"))?.slice("revoked ".length);
-    if (at && !Number.isNaN(Date.parse(at))) return { ...req, revokedAt: at, effectiveStatus, authorizesExecution: false };
+    if (at && !Number.isNaN(Date.parse(at)) && new Date(at).toISOString() === at) {  // only the form revokeApproval writes
+      return { ...req, revokedAt: at, effectiveStatus, authorizesExecution: false };
+    }
   }
   return { ...req, effectiveStatus, authorizesExecution: false };
 }

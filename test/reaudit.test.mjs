@@ -154,4 +154,6 @@ test("OM-R2-AG-01: a bare revoked marker from an earlier version still reads as 
   assert.equal(v.effectiveStatus, "revoked");
   assert.equal(v.revokedAt, undefined);
   assert.equal((await store.consumeApproval(r.id, "old marker")).ok, false);
+  writeFileSync(join(dir, "requests", `${r.id}.used`), "revoked 1"); // a loose time is not shown as one
+  assert.equal((await store.getRequest(r.id)).revokedAt, undefined);
 });
