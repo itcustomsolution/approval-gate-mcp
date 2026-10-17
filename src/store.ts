@@ -33,8 +33,11 @@ export const LIMITS = Object.freeze({
 });
 const MAX_RECORD_BYTES = 256 * 1024;
 const MAX_AUDIT_LINE_BYTES = 256 * 1024;
-// ponytail: whole-directory scans; archive old requests (`approval-gate archive`) if a long-lived install nears this.
+// ponytail: listing and creation collect whole-directory scans; archive old requests (`approval-gate archive`) if a
+// long-lived install nears this. Creation stops at half the cap, so self-denied requests from an agent cannot push
+// the directory to the point where the human-side listing fails (pending markers and orphans fit in the other half).
 const MAX_STATE_ENTRIES = 200_000;
+const CREATE_ENTRY_LIMIT = MAX_STATE_ENTRIES / 2;
 const OPERATION_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const DIGEST_RE = /^[0-9a-f]{64}$/;
 
@@ -168,6 +171,8 @@ function canon(value: unknown, depth: number, budget: { values: number; chars: n
     if (proto !== Object.prototype && proto !== null) throw new Error("payload objects must be plain JSON objects");
     const parts: string[] = [];
     for (const key of Object.keys(value).sort()) {
+      // JSON.parse keeps "__proto__" as data, but copying it (Object.assign, spread into a setter) would set a prototype.
+      if (key === "__proto__") throw new Error('payload objects must not use the key "__proto__"');
       const desc = Object.getOwnPropertyDescriptor(value, key);
       if (!desc || !("value" in desc)) throw new Error("payload objects must not have accessor properties");
       parts.push(`${str(key)}:${canon(desc.value, depth + 1, budget)}`);
@@ -211,16 +216,19 @@ async function securePath(p: string, kind: "dir" | "file", mode: number): Promis
   }
 }
 
-/** Directory scans have an absolute bound even for externally corrupted state. */
+/** Entry names one at a time, never all held: the migration sweep and archive must work at any directory size. */
+async function* streamEntries(): AsyncGenerator<string> {
+  for await (const entry of await fs.opendir(requestsDir())) yield entry.name;
+}
+
+/** Collected directory scans have an absolute bound even for externally corrupted state. */
 async function requestEntries(): Promise<string[]> {
   const entries: string[] = [];
-  const dir = await fs.opendir(requestsDir());
-  for await (const entry of dir) {
+  for await (const name of streamEntries()) {
     if (entries.length >= MAX_STATE_ENTRIES) {
-      await dir.close().catch(() => {});
-      throw new Error(`state directory has more than ${MAX_STATE_ENTRIES} entries; run \`approval-gate archive\` or review it manually`);
+      throw new Error(`state directory has more than ${MAX_STATE_ENTRIES} entries; run \`approval-gate archive\` (it moves finished requests older than 8 days) or review it manually`);
     }
-    entries.push(entry.name);
+    entries.push(name);
   }
   return entries;
 }
@@ -238,7 +246,7 @@ async function ensureDirs(): Promise<void> {
   }
   if (migratedFor !== gateDir()) {
     // One-time upgrade sweep: request/marker files written by <=0.1.x with 0644.
-    for (const f of await requestEntries()) {
+    for await (const f of streamEntries()) {
       if (f.endsWith(".tmp")) continue;
       await securePath(path.join(requestsDir(), f), "file", 0o600);
     }
@@ -328,11 +336,15 @@ async function readBounded(p: string, maxBytes: number): Promise<string> {
   }
 }
 
+/** Content that matches no state: an existing marker that cannot be read always fails closed. */
+const UNREADABLE = "\u0000unreadable";
+
+/** undefined only when the marker does not exist. */
 async function readMarker(id: string, kind: MarkerKind): Promise<string | undefined> {
   try {
     return (await readBounded(markerPath(id, kind), 256)).trim();
-  } catch {
-    return undefined;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : UNREADABLE;
   }
 }
 
@@ -375,12 +387,12 @@ async function readRaw(id: string): Promise<ApprovalRequest | undefined> {
 }
 
 /** The .final marker is authoritative over the JSON status (reconciles crashes between the two writes). */
-async function reconciled(id: string): Promise<ApprovalRequest | undefined> {
+async function reconciled(id: string, attempt = 0): Promise<ApprovalRequest | undefined> {
   const req = await readRaw(id);
   if (!req) return undefined;
   const final = await readMarker(id, "final");
-  if (final && STATUSES.includes(final as RequestStatus) && final !== "pending") return { ...req, status: final as RequestStatus };
-  if (final) return { ...req, status: "denied" }; // unknown marker content: fail closed
+  if (final !== undefined && STATUSES.includes(final as RequestStatus) && final !== "pending") return { ...req, status: final as RequestStatus };
+  if (final !== undefined) return { ...req, status: "denied" }; // unknown, empty or unreadable marker: fail closed
   if (req.status !== "pending") return { ...req, status: "denied" }; // terminal JSON without a decision record: fail closed
   if (isPastExpiry(req)) {
     if (await claimMarker(markerPath(id, "final"), "expired")) {
@@ -389,7 +401,8 @@ async function reconciled(id: string): Promise<ApprovalRequest | undefined> {
       await audit("expired", { id, action: req.action }).catch(() => {});
       return expired;
     }
-    return reconciled(id);
+    // Lost the claim to a concurrent decision; re-read it. A marker that keeps vanishing fails closed.
+    return attempt < 3 ? reconciled(id, attempt + 1) : { ...req, status: "denied" };
   }
   return req;
 }
@@ -399,7 +412,7 @@ async function effective(req: ApprovalRequest): Promise<EffectiveStatus> {
   const used = await readMarker(req.id, "used");
   if (used?.startsWith("consume")) return "consumed";
   if (used === "revoked") return "revoked";
-  if (used) return "invalidated";
+  if (used !== undefined) return "invalidated";
   if ((await readMarker(req.id, "committed")) !== "committed") return "approved_uncommitted";
   if (isPastExpiry(req)) return "approved_expired";
   return "approved_unconsumed";
@@ -412,8 +425,8 @@ export async function getRequest(id: string): Promise<RequestView | undefined> {
 }
 
 /** Ids with a request record but no decision marker: what awaits a human. Directory listing only. */
-async function undecidedIds(): Promise<string[]> {
-  const names = await requestEntries();
+async function undecidedIds(names?: string[]): Promise<string[]> {
+  names ??= await requestEntries();
   const decided = new Set(names.filter((n) => n.endsWith(".final")).map((n) => n.slice(0, -6)));
   return names.filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).filter((id) => isValidId(id) && !decided.has(id));
 }
@@ -434,7 +447,7 @@ export async function createRequest(
   boundedText(action, "action", LIMITS.action);
   boundedText(reason, "reason", LIMITS.reason);
   if (requestedBy !== undefined) boundedText(requestedBy, "requestedBy", LIMITS.requestedBy, false);
-  if (typeof ttlSeconds !== "number" || !Number.isFinite(ttlSeconds) || ttlSeconds > LIMITS.maxTtlSeconds) {
+  if (typeof ttlSeconds !== "number" || !Number.isFinite(ttlSeconds) || ttlSeconds > LIMITS.maxTtlSeconds || Number.isNaN(new Date(Date.now() + ttlSeconds * 1000).getTime())) {
     throw new Error(`ttlSeconds must be a finite number of seconds, at most ${LIMITS.maxTtlSeconds}`);
   }
   if (binding.operation !== undefined) validOperation(binding.operation);
@@ -442,7 +455,11 @@ export async function createRequest(
 
   await ensureDirs();
   const limit = maxPending();
-  if ((await undecidedIds()).length >= limit) {
+  const names = await requestEntries();
+  if (names.length >= CREATE_ENTRY_LIMIT) {
+    throw new Error(`state directory holds ${names.length} entries (limit ${CREATE_ENTRY_LIMIT} for new requests); a human must run \`approval-gate archive\` or review it`);
+  }
+  if ((await undecidedIds(names)).length >= limit) {
     for (const id of await undecidedIds()) await reconciled(id).catch(() => undefined); // expire stale ones
     const waiting = (await undecidedIds()).length;
     if (waiting >= limit) {
@@ -521,11 +538,27 @@ export async function listRequests(status?: RequestStatus): Promise<RequestView[
   return (await allViews()).filter((r) => !status || r.status === status).sort(byCreated);
 }
 
+/** Moves without replacing: false if the source is gone or the destination already exists. */
+async function moveNoClobber(from: string, to: string): Promise<boolean> {
+  try {
+    await fs.link(from, to);
+  } catch (err) {
+    if (["ENOENT", "EEXIST"].includes((err as NodeJS.ErrnoException).code ?? "")) return false;
+    throw err;
+  }
+  await fs.unlink(from);
+  return true;
+}
+
+const MARKER_FILE_RE = /^([0-9a-f]{12,64})\.(final|committed|used)$/;
+
 /**
- * Human-side retention: moves terminal (never-again-consumable) requests created more than
- * `olderThanDays` days ago into <state dir>/archive/. The minimum of 8 days exceeds the 7-day TTL
- * cap, so nothing archived can still be decided or consumed. The .json record moves first: a crash
- * part-way leaves orphan markers, which read as "not found" (fail closed), never as usable.
+ * Human-side retention: moves terminal (never-again-consumable) requests that were created AND expired more
+ * than `olderThanDays` days ago into <state dir>/archive/. Requiring expiry as well as age covers records made by
+ * older versions without the 7-day TTL cap: an archived approval is always past its deadline, and consume
+ * re-checks the record after its claim, so nothing archived can be decided or consumed. The .json record moves
+ * first: a crash part-way leaves orphan markers, which read as "not found" (fail closed) and are moved by the next
+ * run. Entries are streamed, so this works at any directory size. Nothing in archive/ is ever replaced.
  */
 export async function archiveRequests(olderThanDays = 30): Promise<number> {
   if (!Number.isInteger(olderThanDays) || olderThanDays < 8 || olderThanDays > 36_500) {
@@ -536,15 +569,25 @@ export async function archiveRequests(olderThanDays = 30): Promise<number> {
   await fs.mkdir(archive, { recursive: true, mode: 0o700 });
   await securePath(archive, "dir", 0o700);
   const cutoff = Date.now() - olderThanDays * 86_400_000;
-  const names = await requestEntries();
+  const exists = (p: string) => fs.lstat(p).then(() => true, () => false);
   let moved = 0;
-  for (const name of names) {
+  for await (const name of streamEntries()) {
+    const orphan = MARKER_FILE_RE.exec(name);
+    if (orphan) {
+      const id = orphan[1];
+      if (!(await exists(requestPath(id))) && (await exists(path.join(archive, `${id}.json`)))) {
+        await moveNoClobber(path.join(requestsDir(), name), path.join(archive, name));
+      }
+      continue;
+    }
     if (!name.endsWith(".json")) continue;
     const id = name.slice(0, -5);
     const view = await getRequest(id);
-    if (!view || !TERMINAL.has(view.effectiveStatus) || !(Date.parse(view.createdAt) <= cutoff)) continue;
-    const files = names.filter((n) => n.startsWith(`${id}.`) && !n.endsWith(".tmp") && n !== name);
-    for (const f of [name, ...files]) await fs.rename(path.join(requestsDir(), f), path.join(archive, f));
+    if (!view || !TERMINAL.has(view.effectiveStatus) || !(Date.parse(view.createdAt) <= cutoff) || !isPastExpiry(view, cutoff)) continue;
+    if (!(await moveNoClobber(requestPath(id), path.join(archive, name)))) continue;
+    for (const kind of ["final", "committed", "used"] as const) {
+      await moveNoClobber(markerPath(id, kind), path.join(archive, `${id}.${kind}`));
+    }
     moved++;
   }
   await audit("archived", { count: moved, olderThanDays });
@@ -646,6 +689,13 @@ export async function consumeApproval(id: string, action: string, binding: Bindi
   const claimedAt = new Date().toISOString();
   if (!(await claimMarker(markerPath(id, "used"), `consume-claimed ${claimedAt}`))) {
     return { ok: false, error: "already_used", effectiveStatus: await effective(req) };
+  }
+  // The record must still be the one checked above: not archived, replaced or re-decided while we claimed.
+  const now = await readRaw(id);
+  const same = now !== undefined && (["action", "createdAt", "expiresAt", "operation", "payloadDigest"] as const).every((k) => now[k] === req[k]);
+  if (!same || (await readMarker(id, "final")) !== "approved" || (await readMarker(id, "committed")) !== "committed") {
+    await audit("consume_rejected_changed", { id }).catch(() => {});
+    return { ok: false, error: "not_usable" };
   }
   // Check-vs-use: expiry is evaluated after the exclusive claim, so no approval is usable past its deadline.
   if (isPastExpiry(req)) {

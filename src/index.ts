@@ -13,6 +13,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { createRequest, decide, getRequest, listRequestPage, gateDir, consumeApproval, isValidId, LIMITS } from "./store.js";
+import { safe } from "./display.js";
 
 const VERSION = "0.4.0-rc.1";
 const server = new McpServer({ name: "approval-gate", version: VERSION });
@@ -140,7 +141,7 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`approval-gate-mcp ${VERSION} ready (state dir: ${gateDir()})`);
+  console.error(`approval-gate-mcp ${VERSION} ready (state dir: ${safe(gateDir())})`);
 }
 
 main().catch((err) => {

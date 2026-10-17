@@ -189,14 +189,19 @@ system your callback touches. Details: [docs/authorization-states.md](docs/autho
 | `action`, `reason`, decision reason | 8192 UTF-8 bytes each |
 | `requested_by` | 256 bytes (self-reported, never authenticated) |
 | `operation` | 1-128 of `A-Z a-z 0-9 . _ : / -` |
-| `payload` | JSON only; 32 KiB canonical (RFC 8785), depth 32, 10000 values |
+| `payload` | JSON only; 32 KiB canonical (RFC 8785), depth 32, 10000 values; no `"__proto__"` key |
 | TTL | MCP: integer 10 s to 7 days; library: any finite number up to 7 days (zero or negative gives an already-expired request) |
 | Requests awaiting a decision | `APPROVAL_GATE_MAX_PENDING`, default 100, 1 to 10000. Concurrent creators can overshoot by at most their own number. Invalid values fail closed. |
 | List page | 1-100 (default 50) |
+| State directory | New requests are refused at 100,000 entries in `requests/`; listing refuses above 200,000. Reading, deciding, consuming and `archive` work at any size. |
 
 When the queue is full, `request_approval` fails with `approval queue full` until a human decides
-requests or they expire. Finished requests stay on disk until you run `approval-gate archive`
-(minimum age 8 days, more than the 7-day TTL cap, so nothing archived can still be used).
+requests or they expire. Finished requests stay on disk until you run `approval-gate archive`, which
+moves only finished requests that were created and expired at least 8 days ago, so nothing archived can
+still be used. An MCP client can create and deny its own requests without a human, so it can fill
+`requests/` up to the creation limit; that blocks new requests (an availability limit, like the queue
+cap), never a human's decisions. Each listing page reads every request file, so listing slows down as
+history grows until you archive.
 
 ## State
 
@@ -218,7 +223,8 @@ What the gate does protect against:
 - Reusing one approval for a second or different action (`consume_approval` is single-use and action-bound).
 - Using an approval after the request's expiry, races between approve/deny/expiry, guessed ids
   (128-bit random), malformed or hand-edited state files without a matching decision record, and
-  terminal escape sequences in request text that try to disguise what you are approving.
+  terminal escape sequences, bidirectional overrides and invisible or look-alike characters in request
+  text that try to disguise what you are approving (the CLI shows them as `\u` escapes).
 
 What it does **not** protect against:
 

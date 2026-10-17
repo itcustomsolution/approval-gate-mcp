@@ -57,7 +57,8 @@ test("payload canonicalization follows RFC 8785 and rejects non-JSON or oversize
   assert.equal(canonicalJson(keys), `{${order.map((k) => `${JSON.stringify(k)}:${JSON.stringify(keys[k])}`).join(",")}}`);
   assert.equal(canonicalJson({ b: [1, -0, 1e21, 0.1, "\u2028"], a: null }), '{"a":null,"b":[1,0,1e+21,0.1,"\u2028"]}');
   assert.equal(canonicalJson({ y: 1, x: { d: 2, c: 3 } }), canonicalJson({ x: { c: 3, d: 2 }, y: 1 }));
-  assert.equal(JSON.parse(canonicalJson(JSON.parse('{"__proto__":{"polluted":1}}'))).polluted, undefined);
+  // OM-05: an own "__proto__" key would set a prototype when trusted code copies the payload; refused at any depth.
+  for (const raw of ['{"__proto__":{"polluted":1}}', '{"a":[{"__proto__":1}]}']) assert.throws(() => canonicalJson(JSON.parse(raw)), /__proto__/);
   const deep = (n) => (n === 0 ? 1 : [deep(n - 1)]);
   canonicalJson(deep(LIMITS.payloadDepth));
   const sparse = [1];
@@ -138,15 +139,20 @@ test("listRequests keeps its 0.x contract: every match, oldest first (not silent
   assert.deepEqual(all.map((r) => r.createdAt), [...all.map((r) => r.createdAt)].sort());
 });
 
-test("archive moves only old terminal requests; archived requests can never be consumed", async () => {
+test("archive moves only old, long-expired terminal requests; archived requests can never be consumed", async () => {
   const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
+  const oldExpiry = new Date(Date.now() - 40 * 86_400_000 + 3_600_000).toISOString();
   const denied = await store.createRequest("old denied", "r", 3600);
   await store.decide(denied.id, false);
-  edit(denied.id, { createdAt: old });
+  edit(denied.id, { createdAt: old, expiresAt: oldExpiry });
   const consumed = await store.createRequest("old consumed", "r", 3600);
   await store.decide(consumed.id, true);
   await store.consumeApproval(consumed.id, "old consumed");
-  edit(consumed.id, { createdAt: old });
+  edit(consumed.id, { createdAt: old, expiresAt: oldExpiry });
+  // A record from a version without the TTL cap: old and terminal, but its deadline has not passed.
+  const legacy = await store.createRequest("legacy long ttl", "r", 3600);
+  await store.decide(legacy.id, false);
+  edit(legacy.id, { createdAt: old });
   const usable = await store.createRequest("old but still usable", "r", 3600);
   await store.decide(usable.id, true);
   edit(usable.id, { createdAt: old });
@@ -161,6 +167,6 @@ test("archive moves only old terminal requests; archived requests can never be c
   assert.ok(existsSync(join(dir, "archive", `${consumed.id}.used`)));
   assert.equal(await store.getRequest(consumed.id), undefined);
   assert.deepEqual(await store.consumeApproval(consumed.id, "old consumed"), { ok: false, error: "not_found" });
-  for (const keep of [usable.id, pending.id, recentDenied.id]) assert.ok(await store.getRequest(keep));
+  for (const keep of [usable.id, pending.id, recentDenied.id, legacy.id]) assert.ok(await store.getRequest(keep));
   assert.equal((await store.consumeApproval(usable.id, "old but still usable")).ok, true);
 });

@@ -81,6 +81,13 @@ retries an execution.
 ## Archive
 
 `approval-gate archive [--older-than-days N]` (N ≥ 8, default 30) moves terminal requests
-(denied, expired, consumed, revoked, invalidated, approved but expired or uncommitted) into
-`archive/`. The `.json` record moves first, so a crash part-way leaves only orphan markers, which
-read as "not found". Pending and approved-unconsumed requests are never archived.
+(denied, expired, consumed, revoked, invalidated, approved but expired or uncommitted) that were created
+**and** expired at least N days ago into `archive/`. Requiring expiry covers records written by versions
+before the 7-day TTL cap: an archived approval is always past its deadline. Consume also re-reads the record
+and its markers after winning `.used`, so a record moved or replaced during the claim is refused and stays
+spent. The `.json` record moves first, so a crash part-way leaves only orphan markers, which read as "not
+found" and are moved by the next run. Nothing in `archive/` is ever replaced. Pending and
+approved-unconsumed requests are never archived.
+
+An existing marker that cannot be read (too large, wrong type, no permission, empty) counts as a decision
+that matches no state: the request reads as denied and an approval as unusable.

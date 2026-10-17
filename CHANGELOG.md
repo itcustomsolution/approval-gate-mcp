@@ -30,6 +30,19 @@ All notable changes to this project are documented here. The format follows
   GHSA-5r4p-p66f-jhc7); lock refreshed to current in-range versions.
 - CI: actions pinned to commit SHAs; Node 22/24/26 matrix; dependency lifecycle scripts disabled.
 
+### Independent review fixes (2026-10-16)
+- Archive moves only requests that were created and expired at least N days ago, and consume re-checks the record and
+  its markers after winning `.used`: a record archived or replaced during the claim is refused (OM-01).
+- The permission sweep and `archive` stream the directory, so they work at any size; new requests are refused at
+  100,000 entries, half the 200,000 listing bound, so self-denied requests cannot block human listing (OM-02).
+- An unreadable, empty or oversized marker fails closed instead of looping forever (OM-03).
+- The CLI escapes format, private-use, unassigned, separator and non-ASCII space characters, Hangul fillers, braille
+  blank and variation selectors as well as controls (OM-04); the MCP server's stderr banner is escaped (OM-09).
+- Payloads may not use the object key `"__proto__"` (OM-05). Orphan markers from an interrupted archive are moved by the
+  next run (OM-07). An extreme negative TTL gets the documented `ttlSeconds` error (OM-08).
+- `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
+  for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
+
 ## [0.3.0] - 2026-10-15
 
 ### Security (follow-ups to the #24 review threads and an independent audit)
