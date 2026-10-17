@@ -5,6 +5,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0-rc.1] - unreleased candidate (2026-10-16, not published)
+
+**Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
+`list_pending` returns `{items, nextCursor}`; request text, payload and queue limits are enforced; library TTLs over
+7 days are refused.
+
+### Security (2026-10-16 audit: AG-01 to AG-05)
+- AG-01: `assertConsumed(result, id, action, binding?)` accepts only a grant object issued by `consumeApproval` in the
+  same process, once, before expiry. JSON copies (MCP responses, files, agent messages) and hand-built objects are
+  refused. New `executeApproved(id, {action, operation?, payload?}, fn)` performs the single-use consume itself and
+  passes the function a frozen copy of the approved payload.
+- Payload binding: requests may carry an `operation` name and a JSON `payload` (RFC 8785 canonical form, SHA-256).
+  Consume must present the same binding; the CLI shows both to the human.
+- AG-02: expiry is checked again after all awaited persistence, and by `executeApproved` immediately before the
+  function runs (after an fsynced `execution_started` audit record). Refusals after the claim keep the approval spent.
+  Crash and replay semantics are documented in docs/authorization-states.md.
+- AG-03: README and source no longer say an `approved` status authorizes; a documentation regression test guards it.
+- AG-04: every CLI error is escaped for the terminal; invalid ids are rejected without being echoed.
+- AG-05: UTF-8 byte limits for action/reason/requested_by/operation/payload; a pending-queue cap
+  (`APPROVAL_GATE_MAX_PENDING`, default 100); paginated `list_pending` and `approval-gate list --limit/--after`;
+  `approval-gate archive` for retention. `listRequests` keeps returning every match (0.x behavior).
+- Dependencies: MCP SDK 1.32.1 (outside the four SDK 1.31.0 vendor advisory ranges), Hono floor 4.13.13 (outside
+  GHSA-5r4p-p66f-jhc7); lock refreshed to current in-range versions.
+- CI: actions pinned to commit SHAs; Node 22/24/26 matrix; dependency lifecycle scripts disabled.
+
 ## [0.3.0] - 2026-10-15
 
 ### Security (follow-ups to the #24 review threads and an independent audit)
