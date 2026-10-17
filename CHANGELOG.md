@@ -58,6 +58,9 @@ All notable changes to this project are documented here. The format follows
 - Before release (2026-10-17, pre-existing on rc.1 and rc.2): two archive runs at once no longer crash one of them
   with `ENOENT`; the start-up permission sweep skips a state file that the other run moved after it was listed (RV-01
   had covered the moves themselves, not this sweep). The final state was already correct in every run.
+- r3 review fix (omar, 2026-10-17): the sweep skips a file only when a second look finds it gone, so a file swapped
+  for a dangling symlink during the sweep is still refused (OM-R3-AG-01, introduced by the fix above). A symlink
+  planted after the sweep is followed on read, as before; the gate is not a boundary against the same OS user.
 
 ## [0.3.0] - 2026-10-15
 
