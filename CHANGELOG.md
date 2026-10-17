@@ -42,6 +42,12 @@ All notable changes to this project are documented here. The format follows
   next run (OM-07). An extreme negative TTL gets the documented `ttlSeconds` error (OM-08).
 - An archive move interrupted between its hard link and the removal of the original is completed by the next run
   (final verification VF-01); two overlapping archive runs both finish (RV-01).
+- Independent re-audit fixes (2026-10-17): the `requested` audit line is written before the request file, so no
+  crash can leave an approvable request without it (RA-AG-01); expiry and late revocation no longer rewrite the
+  request file (the markers record them), so a reader racing `archive` cannot recreate an archived record, and a
+  finished record without its decision marker no longer counts against the pending queue (RA-AG-02); the CLI escapes
+  literal backslashes as well, so different action or reason text never displays the same (RA-AG-03). The npm
+  package now includes the two design documents the README links to.
 - `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
   for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
 

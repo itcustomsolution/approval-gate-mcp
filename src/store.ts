@@ -391,15 +391,16 @@ async function reconciled(id: string, attempt = 0): Promise<ApprovalRequest | un
   const req = await readRaw(id);
   if (!req) return undefined;
   const final = await readMarker(id, "final");
+  if (final === "expired") return { ...req, status: "expired", decidedAt: req.decidedAt ?? req.expiresAt, decisionReason: req.decisionReason ?? "TTL expired" };
   if (final !== undefined && STATUSES.includes(final as RequestStatus) && final !== "pending") return { ...req, status: final as RequestStatus };
   if (final !== undefined) return { ...req, status: "denied" }; // unknown, empty or unreadable marker: fail closed
   if (req.status !== "pending") return { ...req, status: "denied" }; // terminal JSON without a decision record: fail closed
   if (isPastExpiry(req)) {
     if (await claimMarker(markerPath(id, "final"), "expired")) {
-      const expired: ApprovalRequest = { ...req, status: "expired", decidedAt: new Date().toISOString(), decisionReason: "TTL expired" };
-      await writeRequest(expired).catch(() => {});
+      // The marker is the record of expiry. The JSON file is not rewritten: a reader racing an archive run could
+      // otherwise recreate a record the archive had just moved (re-audit RA-AG-02).
       await audit("expired", { id, action: req.action }).catch(() => {});
-      return expired;
+      return { ...req, status: "expired", decidedAt: req.decidedAt ?? req.expiresAt, decisionReason: req.decisionReason ?? "TTL expired" };
     }
     // Lost the claim to a concurrent decision; re-read it. A marker that keeps vanishing fails closed.
     return attempt < 3 ? reconciled(id, attempt + 1) : { ...req, status: "denied" };
@@ -460,7 +461,11 @@ export async function createRequest(
     throw new Error(`state directory holds ${names.length} entries (limit ${CREATE_ENTRY_LIMIT} for new requests); a human must run \`approval-gate archive\` or review it`);
   }
   if ((await undecidedIds(names)).length >= limit) {
-    for (const id of await undecidedIds()) await reconciled(id).catch(() => undefined); // expire stale ones
+    // Expire stale ones, and give a terminal record that lacks its decision marker one, so it stops counting.
+    for (const id of await undecidedIds()) {
+      const r = await reconciled(id).catch(() => undefined);
+      if (r && r.status !== "pending") await claimMarker(markerPath(id, "final"), r.status).catch(() => {});
+    }
     const waiting = (await undecidedIds()).length;
     if (waiting >= limit) {
       throw new Error(`approval queue full: ${waiting} requests await a decision (APPROVAL_GATE_MAX_PENDING=${limit}); a human must decide some, or let them expire`);
@@ -481,12 +486,13 @@ export async function createRequest(
   };
   const auditData = { id: req.id, action, reason, requestedBy, operation: req.operation, payloadDigest: req.payloadDigest };
   // LIMITS keep the worst case (6x JSON escaping of every text field) under MAX_RECORD_BYTES and the audit cap.
-  await writeRequest(req);
+  // The audit line is written (fsync) before the request file exists, so no crash can leave an approvable
+  // request without it. A crash in between leaves only an audit line for a request that never existed.
+  await audit("requested", auditData);
   try {
-    await audit("requested", auditData);
+    await writeRequest(req);
   } catch (err) {
-    // A request without its audit line must never become approvable.
-    await claimMarker(markerPath(req.id, "final"), "denied").catch(() => {});
+    await audit("request_not_created", { id: req.id }).catch(() => {});
     throw err;
   }
   return { ...req, effectiveStatus: "pending", authorizesExecution: false };
@@ -625,7 +631,9 @@ export async function revokeApproval(id: string, reason?: string): Promise<Reque
     throw new Error(`Request ${id} is already ${await effective(req)}`);
   }
   const revoked = { ...req, revokedAt: new Date().toISOString() };
-  await writeRequest(revoked).catch(() => {});
+  // The .used marker is the record of revocation. A long-expired approval may be an archive candidate, so its
+  // JSON file is not rewritten (that could recreate an archived record; re-audit RA-AG-02).
+  if (!isPastExpiry(req)) await writeRequest(revoked).catch(() => {});
   await audit("revoked", { id, action: req.action, reason }).catch(() => {});
   return { ...revoked, effectiveStatus: "revoked", authorizesExecution: false };
 }
@@ -645,7 +653,6 @@ export async function decide(id: string, approve: boolean, reason?: string): Pro
     throw new Error(`Request ${id} is already ${now?.status ?? "decided"}`);
   }
   if (approve && status === "expired") {
-    await writeRequest({ ...req, status, decidedAt: new Date().toISOString(), decisionReason: "TTL expired" }).catch(() => {});
     await audit("expired", { id, action: req.action }).catch(() => {});
     throw new Error(`Request ${id} is already expired`);
   }

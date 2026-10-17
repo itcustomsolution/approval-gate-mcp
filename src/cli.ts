@@ -10,7 +10,7 @@
  *   approval-gate archive [--older-than-days N]
  */
 import { createInterface } from "node:readline/promises";
-import { safe } from "./display.js";
+import { safe, safeJsonLine } from "./display.js";
 import {
   archiveRequests,
   revokeApproval,
@@ -52,7 +52,7 @@ function fmt(req: RequestSummary): string {
 
 /** The full approved payload, rendered from its canonical bytes and escaped for the terminal. */
 function payloadLines(canonical: string): string {
-  return JSON.stringify(JSON.parse(canonical), null, 2).split("\n").map((l) => `    ${safe(l)}`).join("\n");
+  return JSON.stringify(JSON.parse(canonical), null, 2).split("\n").map((l) => `    ${safeJsonLine(l)}`).join("\n");
 }
 
 function requireId(arg: string | undefined): string {
@@ -116,7 +116,7 @@ async function main() {
         console.error("No request with that id");
         process.exit(2);
       }
-      console.log(JSON.stringify(req, null, 2).split("\n").map(safe).join("\n"));
+      console.log(JSON.stringify(req, null, 2).split("\n").map(safeJsonLine).join("\n"));
       if (req.payloadCanonical !== undefined) console.log(`payload:\n${payloadLines(req.payloadCanonical)}`);
       return;
     }

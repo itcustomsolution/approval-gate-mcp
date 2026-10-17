@@ -73,7 +73,8 @@ retries an execution.
 | After `.final=approved`, before JSON/audit | `approved_uncommitted`: never consumable. Create a new request. |
 | JSON or audit write throws during approve | `.used=invalidated:decision_write_failed` best effort; without `.committed` it is unusable anyway. |
 | After `.final=denied`, before JSON | Reads as `denied` (marker wins). |
-| `requested` audit write fails | `.final=denied` best effort; the request is never approvable. |
+| `requested` audit write fails | No request file is written; there is nothing to approve. |
+| Crash after the `requested` audit line, before the request file | An audit line for a request that never existed; nothing to approve. The audit line is always written first. |
 | After `.used` claim, audit throws during consume | `ok:false audit_failed`; approval burned. |
 | Orphan `*.tmp` files | Ignored; never treated as markers. |
 | JSON says approved/denied/expired with no `.final` | Read as `denied` (hand edit or corruption). |

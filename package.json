@@ -13,7 +13,9 @@
     "dist",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/authorization-states.md",
+    "docs/design-trusted-executor.md"
   ],
   "scripts": {
     "build": "tsc",
