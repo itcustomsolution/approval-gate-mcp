@@ -5,9 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- `server.json` (MCP registry metadata, not part of the npm package) named 0.4.0-rc.2 while the package was
-  0.4.0-rc.3; it now matches, and `test/metadata.test.mjs` keeps them equal. No code changed.
-
 ## [0.4.0-rc.3] - unreleased candidate (2026-10-17, not published; 0.4.0-rc.1 of 2026-10-16 and 0.4.0-rc.2 of 2026-10-17 were the independently audited candidates)
 
 **Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
