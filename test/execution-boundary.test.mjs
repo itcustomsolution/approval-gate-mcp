@@ -230,10 +230,10 @@ test("AG-02: execution_started persistence that crosses expiry stops before the 
 });
 
 test("assertActive inside the callback catches expiry after the callback's own await", async () => {
-  const r = await approved("synthetic long callback", 1);
+  const r = await approved("synthetic long callback", 3);
   await assert.rejects(
     store.executeApproved(r.id, { action: r.action }, async (ctx) => {
-      await sleep(1200);
+      await sleep(3200);
       ctx.assertActive(); // the side effect would follow here
       assert.fail("side effect reached after expiry");
     }),
