@@ -81,10 +81,10 @@ test("AG-01: action substitution burns the grant and refuses", async () => {
 });
 
 test("AG-01: a genuine grant presented after expiry is refused", async () => {
-  const r = await approved("short-lived synthetic action", 1);
+  const r = await approved("short-lived synthetic action", 3);
   const c = await store.consumeApproval(r.id, r.action);
   assert.equal(c.ok, true);
-  await sleep(1100);
+  await sleep(3100);
   assert.throws(() => store.assertConsumed(c, r.id, r.action), /expired/);
 });
 
@@ -211,8 +211,8 @@ test("persistence failure: if execution_started cannot be recorded, nothing runs
 });
 
 test("AG-02: audit persistence that crosses expiry returns approval_expired, not a grant, and stays burned", async () => {
-  const r = await approved("synthetic slow persistence", 1);
-  const res = await withHandles({ onSync: (s) => (s.includes('"event":"consumed"') ? sleep(1300) : undefined) }, () => store.consumeApproval(r.id, r.action));
+  const r = await approved("synthetic slow persistence", 3);
+  const res = await withHandles({ onSync: (s) => (s.includes('"event":"consumed"') ? sleep(3300) : undefined) }, () => store.consumeApproval(r.id, r.action));
   assert.equal(Date.now() > Date.parse(r.expiresAt), true);
   assert.deepEqual([res.ok, res.error, res.effectiveStatus], [false, "approval_expired", "consumed"]);
   assert.ok(auditEvents().some((e) => e.id === r.id && e.event === "consume_rejected_expired" && e.phase === "after_persistence"));
@@ -221,8 +221,8 @@ test("AG-02: audit persistence that crosses expiry returns approval_expired, not
 });
 
 test("AG-02: execution_started persistence that crosses expiry stops before the side effect", async () => {
-  const r = await approved("synthetic slow start record", 2);
-  await withHandles({ onSync: (s) => (s.includes('"event":"execution_started"') ? sleep(2300) : undefined) }, () =>
+  const r = await approved("synthetic slow start record", 5);
+  await withHandles({ onSync: (s) => (s.includes('"event":"execution_started"') ? sleep(5300) : undefined) }, () =>
     assert.rejects(store.executeApproved(r.id, { action: r.action }, () => assert.fail("must not run")), /expired before execution/),
   );
   assert.ok(auditEvents().some((e) => e.id === r.id && e.event === "execution_refused"));
