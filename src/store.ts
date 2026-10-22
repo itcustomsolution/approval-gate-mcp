@@ -239,6 +239,11 @@ async function ensureDirs(): Promise<void> {
   await fs.mkdir(requestsDir(), { recursive: true, mode: 0o700 });
   await securePath(gateDir(), "dir", 0o700);
   await securePath(requestsDir(), "dir", 0o700);
+  if (dirsSynced !== gateDir()) {
+    await syncDir(gateDir());
+    await syncDir(path.dirname(gateDir()));
+    dirsSynced = gateDir();
+  }
   try {
     await securePath(auditPath(), "file", 0o600);
   } catch (err) {
@@ -275,12 +280,15 @@ export async function audit(event: string, data: Record<string, unknown>): Promi
   await ensureDirs();
   const line = auditLine(event, data);
   const fh = await fs.open(auditPath(), "a", 0o600);
+  let created = false;
   try {
+    created = (await fh.stat()).size === 0;
     await fh.writeFile(line, "utf8");
     await fh.sync();
   } finally {
     await fh.close();
   }
+  if (created) await syncDir(gateDir()); // the audit file's own name is durable before anything rests on it
 }
 
 async function writeAtomic(dest: string, content: string): Promise<string> {
@@ -307,21 +315,17 @@ function serialize(req: ApprovalRequest): string {
  * Platforms whose directories cannot be opened or fsynced (Windows) are skipped; any other failure is reported.
  */
 async function syncDir(dir: string): Promise<void> {
-  let fh;
-  try {
-    fh = await fs.open(dir, "r");
-  } catch (err) {
-    if (["EISDIR", "EPERM", "EACCES", "ENOTSUP", "EINVAL"].includes((err as NodeJS.ErrnoException).code ?? "")) return;
-    throw err;
-  }
+  if (process.platform === "win32") return; // directories cannot be opened for fsync; documented weaker contract
+  const fh = await fs.open(dir, "r"); // any failure propagates: the caller must not grant on an unsynced name
   try {
     await fh.sync();
-  } catch (err) {
-    if (!["EINVAL", "ENOTSUP", "EPERM", "EBADF"].includes((err as NodeJS.ErrnoException).code ?? "")) throw err;
   } finally {
     await fh.close();
   }
 }
+
+/** The state directory and its parent entry synced once per process, after they are created. */
+let dirsSynced: string | undefined;
 
 async function writeRequest(req: ApprovalRequest): Promise<void> {
   await ensureDirs();
