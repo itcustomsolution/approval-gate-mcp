@@ -280,16 +280,20 @@ export async function audit(event: string, data: Record<string, unknown>): Promi
   await ensureDirs();
   const line = auditLine(event, data);
   const fh = await fs.open(auditPath(), "a", 0o600);
-  let created = false;
   try {
-    created = (await fh.stat()).size === 0;
     await fh.writeFile(line, "utf8");
     await fh.sync();
   } finally {
     await fh.close();
   }
-  if (created) await syncDir(gateDir()); // the audit file's own name is durable before anything rests on it
+  // The audit file's own name is durable before anything rests on this line: every appender in this process syncs
+  // the state directory until one such sync has succeeded (a failed or still-pending sync does not count).
+  if (auditNameSynced !== gateDir()) {
+    await syncDir(gateDir());
+    auditNameSynced = gateDir();
+  }
 }
+let auditNameSynced: string | undefined;
 
 async function writeAtomic(dest: string, content: string): Promise<string> {
   const tmp = `${dest}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
@@ -650,6 +654,7 @@ export async function archiveRequests(olderThanDays = 30): Promise<number> {
   await ensureDirs();
   const archive = path.join(gateDir(), "archive");
   await fs.mkdir(archive, { recursive: true, mode: 0o700 });
+  await syncDir(gateDir()); // the archive directory's entry is durable before any record leaves requests/
   await securePath(archive, "dir", 0o700);
   const cutoff = Date.now() - olderThanDays * 86_400_000;
   const exists = (p: string) => fs.lstat(p).then(() => true, () => false);

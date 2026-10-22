@@ -13,8 +13,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Security (independent release review, 2026-10-22)
 - Durability of the spent state across a host crash: the directory entry of every marker, request record and
-  archive move, the state directory and the audit file's creation are fsynced after the link, rename or create,
-  before any authority rests on them; a directory fsync that fails is an error, not a grant (except on Windows,
+  archive move, the state directory, the archive directory and the audit file's creation are fsynced after the
+  link, rename or create, before any authority rests on them (every appender syncs the audit file's name until one
+  such sync has succeeded in the process); a directory fsync that fails is an error, not a grant (except on Windows,
   where directories cannot be fsynced and the contract is the weaker file-level one). A record whose `.used` marker
   is missing but which carries `consumedAt` or `revokedAt` reads as consumed or revoked, never as usable.
 - `list_pending` and `approval-gate list` build summaries record by record and drop payload text as each is read;
