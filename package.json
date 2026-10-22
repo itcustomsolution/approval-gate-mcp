@@ -1,6 +1,6 @@
 {
   "name": "@itcustomsolution/approval-gate-mcp",
-  "version": "0.4.0-rc.3",
+  "version": "0.4.0",
   "description": "Fail-closed human approval gates for AI agent actions, as an MCP server. Default-deny, TTL expiry, append-only audit log.",
   "mcpName": "io.github.itcustomsolution/approval-gate-mcp",
   "type": "module",
