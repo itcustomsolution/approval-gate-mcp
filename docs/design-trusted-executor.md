@@ -1,11 +1,16 @@
-# Design proposal: canonical-payload trusted executor (not implemented)
+# Design: canonical-payload trusted executor
 
-Status: proposal only. Nothing here exists in the package yet, and it adds no credentials.
+Status (0.4.0-rc.2): steps 1, 2 and the consume/expiry part of step 4 are implemented **in-process**:
+requests can bind an `operation` and an RFC 8785 canonical JSON `payload` (SHA-256 digest), the CLI
+shows them to the human, and `executeApproved` consumes, re-checks expiry and hands the trusted
+function a frozen copy of the approved payload. Steps 3, 5 and 6 (a separate executor identity
+holding the capability, human authentication, tamper-evident audit) are **not implemented** and
+create no credentials. Without them a same-user agent can still bypass the gate.
 
 ## Problem
 
-Today the binding is *cooperative*: `consume_approval(id, action)` matches the free-text `action`
-string the agent wrote. The agent that performs the side effect is the same party that wrote the
+Without a payload, the binding is *cooperative*: `consume_approval(id, action)` matches the free-text
+`action` string the agent wrote. The agent that performs the side effect is the same party that wrote the
 text, so nothing forces the executed payload (the email body, the SQL, the deploy target) to equal
 what the human read. A same-user agent can also bypass the gate entirely (README, Threat model).
 
@@ -13,8 +18,9 @@ what the human read. A same-user agent can also bypass the gate entirely (README
 
 | Layer | Who enforces | Guarantee |
 |---|---|---|
-| Cooperative protocol (today) | The agent's own policy | Single-use, action-text-bound, expiring approvals, *if the agent calls the gate* |
-| Enforced binding (proposed) | A separate executor process the agent cannot impersonate | The executed payload equals the approved payload byte for byte |
+| Cooperative protocol | The agent's own policy | Single-use, action-text-bound, expiring approvals, *if the agent calls the gate* |
+| In-process binding (implemented) | Trusted code calling `executeApproved` | The payload handed to the function equals the approved canonical payload, *if that code is not the agent and uses it* |
+| Enforced binding (proposed) | A separate executor process the agent cannot impersonate | The executed payload equals the approved payload byte for byte, even against a same-user agent |
 
 ## Proposed design
 

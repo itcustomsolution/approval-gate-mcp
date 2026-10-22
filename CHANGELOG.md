@@ -5,6 +5,75 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-22
+
+**Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
+`list_pending` returns `{items, nextCursor}`; request text, payload and queue limits are enforced; library TTLs over
+7 days are refused.
+
+### Security (independent release review, 2026-10-22)
+- Durability of the spent state across a host crash: the directory entry of every marker, request record and
+  archive move, the state directory, the archive directory and the audit file's creation are fsynced after the
+  link, rename or create, before any authority rests on them (every appender syncs the audit file's name until one
+  such sync has succeeded in the process); a directory fsync that fails is an error, not a grant (except on Windows,
+  where directories cannot be fsynced and the contract is the weaker file-level one). A record whose `.used` marker
+  is missing but which carries `consumedAt` or `revokedAt` reads as consumed or revoked, never as usable.
+- `list_pending` and `approval-gate list` build summaries record by record and drop payload text as each is read;
+  memory is proportional to the matching summaries (action, reason, digests), not to the payloads.
+- README: the display protection covers controls, bidirectional overrides and invisible characters; ordinary
+  look-alike letters from other scripts are shown unchanged.
+
+### Security (2026-10-16 audit: AG-01 to AG-05)
+- AG-01: `assertConsumed(result, id, action, binding?)` accepts only a grant object issued by `consumeApproval` in the
+  same process, once, before expiry. JSON copies (MCP responses, files, agent messages) and hand-built objects are
+  refused. New `executeApproved(id, {action, operation?, payload?}, fn)` performs the single-use consume itself and
+  passes the function a frozen copy of the approved payload.
+- Payload binding: requests may carry an `operation` name and a JSON `payload` (RFC 8785 canonical form, SHA-256).
+  Consume must present the same binding; the CLI shows both to the human.
+- AG-02: expiry is checked again after all awaited persistence, and by `executeApproved` immediately before the
+  function runs (after an fsynced `execution_started` audit record). Refusals after the claim keep the approval spent.
+  Crash and replay semantics are documented in docs/authorization-states.md.
+- AG-03: README and source no longer say an `approved` status authorizes; a documentation regression test guards it.
+- AG-04: every CLI error is escaped for the terminal; invalid ids are rejected without being echoed.
+- AG-05: UTF-8 byte limits for action/reason/requested_by/operation/payload; a pending-queue cap
+  (`APPROVAL_GATE_MAX_PENDING`, default 100); paginated `list_pending` and `approval-gate list --limit/--after`;
+  `approval-gate archive` for retention. `listRequests` keeps returning every match (0.x behavior).
+- Dependencies: MCP SDK 1.32.1 (outside the four SDK 1.31.0 vendor advisory ranges), Hono floor 4.13.13 (outside
+  GHSA-5r4p-p66f-jhc7); lock refreshed to current in-range versions.
+- CI: actions pinned to commit SHAs; Node 22/24/26 matrix; dependency lifecycle scripts disabled.
+
+### Independent review fixes (2026-10-16)
+- Archive moves only requests that were created and expired at least N days ago, and consume re-checks the record and
+  its markers after winning `.used`: a record archived or replaced during the claim is refused (OM-01).
+- The permission sweep and `archive` stream the directory, so they work at any size; new requests are refused at
+  100,000 entries, half the 200,000 listing bound, so self-denied requests cannot block human listing (OM-02).
+- An unreadable, empty or oversized marker fails closed instead of looping forever (OM-03).
+- The CLI escapes format, private-use, unassigned, separator and non-ASCII space characters, Hangul fillers, braille
+  blank and variation selectors as well as controls (OM-04); the MCP server's stderr banner is escaped (OM-09).
+- Payloads may not use the object key `"__proto__"` (OM-05). Orphan markers from an interrupted archive are moved by the
+  next run (OM-07). An extreme negative TTL gets the documented `ttlSeconds` error (OM-08).
+- An archive move interrupted between its hard link and the removal of the original is completed by the next run
+  (final verification VF-01); two overlapping archive runs both finish (RV-01).
+- Independent re-audit fixes (2026-10-17): the `requested` audit line is written before the request file, so no
+  crash can leave an approvable request without it (RA-AG-01); expiry and late revocation no longer rewrite the
+  request file (the markers record them), so a reader racing `archive` cannot recreate an archived record, and a
+  finished record without its decision marker no longer counts against the pending queue (RA-AG-02); the CLI escapes
+  literal backslashes as well, so different action or reason text never displays the same (RA-AG-03). The npm
+  package now includes the two design documents the README links to.
+- Visible effects of that change: an expired request's `decidedAt` is its `expiresAt` (it was the moment expiry was
+  first observed) and is the same on every read; its JSON file keeps `"status": "pending"`, so read status through
+  the library, MCP or CLI. The `.used` marker of a revocation now carries its time (`revoked <ISO time>`), and views
+  take `revokedAt` from it when the request file was not rewritten; a bare `revoked` marker from an earlier version
+  still reads as revoked.
+- `hono` stays a direct dependency: it is not imported, but its range raises the version a consumer's install resolves
+  for the SDK's transitive `hono`, which a package's own `overrides` cannot do for consumers (OM-09).
+- Before release (2026-10-17, pre-existing on rc.1 and rc.2): two archive runs at once no longer crash one of them
+  with `ENOENT`; the start-up permission sweep skips a state file that the other run moved after it was listed (RV-01
+  had covered the moves themselves, not this sweep). The final state was already correct in every run.
+- r3 review fix (omar, 2026-10-17): the sweep skips a file only when a second look finds it gone, so a file swapped
+  for a dangling symlink during the sweep is still refused (OM-R3-AG-01, introduced by the fix above). A symlink
+  planted after the sweep is followed on read, as before; the gate is not a boundary against the same OS user.
+
 ## [0.3.0] - 2026-10-15
 
 ### Security (follow-ups to the #24 review threads and an independent audit)

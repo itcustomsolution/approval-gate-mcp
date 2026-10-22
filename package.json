@@ -1,6 +1,6 @@
 {
   "name": "@itcustomsolution/approval-gate-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fail-closed human approval gates for AI agent actions, as an MCP server. Default-deny, TTL expiry, append-only audit log.",
   "mcpName": "io.github.itcustomsolution/approval-gate-mcp",
   "type": "module",
@@ -13,7 +13,9 @@
     "dist",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/authorization-states.md",
+    "docs/design-trusted-executor.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -39,13 +41,13 @@
   "author": "Olufela 'Lu' Fagbure <lu@itcustomsolution.com> (https://itcustomsolution.com)",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.31.0",
-    "hono": "^4.13.8",
-    "zod": "^3.23.8"
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "hono": "^4.13.13",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.0"
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
   },
   "homepage": "https://github.com/itcustomsolution/approval-gate-mcp#readme",
   "repository": {
@@ -56,6 +58,6 @@
     "url": "https://github.com/itcustomsolution/approval-gate-mcp/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
