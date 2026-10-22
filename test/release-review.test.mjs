@@ -2,7 +2,7 @@
 // lost directory entry (AG-01) and bounded listing of a long history (AG-02). Synthetic state in a temp dir only.
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, unlinkSync } from "node:fs";
+import { mkdtempSync, readdirSync, unlinkSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,4 +52,33 @@ test("AG-02: listing a long denied history returns only the page asked for, with
   const next = await store.listRequestPage("denied", 5, denied.nextCursor);
   assert.equal(next.items.length, 5);
   assert.notEqual(next.items[0].id, denied.items[0].id);
+});
+
+test("AG-02: streamed pages preserve total order, ties, filters and continuation without duplicates", async () => {
+  const stamp = Date.now();
+  for (let i = 0; i < 13; i++) {
+    const r = await store.createRequest("page-order " + i, "synthetic fixture", 3600);
+    await store.decide(r.id, i % 3 === 0);
+    const file = join(dir, "requests", r.id + ".json");
+    const row = JSON.parse(readFileSync(file, "utf8"));
+    row.createdAt = new Date(stamp - (i % 4) * 1000).toISOString();
+    writeFileSync(file, JSON.stringify(row));
+  }
+  // Compare against the public legacy full-list contract, across all records in this fixture.
+  for (const status of [undefined, "denied", "approved"]) {
+    const expected = (await store.listRequests(status)).map((row) => row.id);
+    const seen = [];
+    let cursor;
+    do {
+      const page = await store.listRequestPage(status, 2, cursor);
+      assert.ok(page.items.length <= 2);
+      assert.ok(page.items.every((row) => !("payloadCanonical" in row)));
+      seen.push(...page.items.map((row) => row.id));
+      assert.ok(seen.length <= expected.length, "continuation must make progress");
+      cursor = page.nextCursor;
+    } while (cursor);
+    assert.deepEqual(seen, expected);
+    assert.equal(new Set(seen).size, seen.length);
+  }
+  await assert.rejects(store.listRequestPage(undefined, 2, "ffffffffffff"), /unknown page cursor/);
 });

@@ -1,7 +1,7 @@
 // Regression tests for the five #24 review threads and the independent audit (items a-g).
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, statSync, chmodSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, statSync, chmodSync, mkdirSync, existsSync, readdirSync, promises as fsp } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -66,16 +66,34 @@ test("(e) approval that would win after the deadline is recorded expired", async
   assert.equal(readFileSync(p(r.id, "final"), "utf8"), "expired");
 });
 
-test("(e) expiry is evaluated after the exclusive use claim (check-vs-use)", async () => {
+test("(e) expiry is evaluated after the exclusive use claim (check-vs-use)", { timeout: 5000 }, async () => {
   const r = await store.createRequest("edge", "x", 3600);
   await store.decide(r.id, true);
-  // Expire between the eligibility check and the claim by making expiresAt 'now'
-  const j = JSON.parse(readFileSync(p(r.id, "json"), "utf8"));
-  j.expiresAt = new Date(Date.now() + 15).toISOString();
-  writeFileSync(p(r.id, "json"), JSON.stringify(j));
-  await new Promise((res) => setTimeout(res, 30));
-  const c = await store.consumeApproval(r.id, "edge");
-  assert.equal(c.ok, false);
+  const link = fsp.link, now = Date.now;
+  let release, reached;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const claimed = new Promise((resolve) => { reached = resolve; });
+  let consuming;
+  fsp.link = async function (from, to, ...rest) {
+    await link.call(this, from, to, ...rest);
+    if (String(to) === p(r.id, "used")) { reached(); await gate; }
+  };
+  try {
+    consuming = store.consumeApproval(r.id, "edge");
+    await Promise.race([claimed, consuming.then(() => assert.fail("consume finished before use-claim barrier"))]);
+    assert.equal(existsSync(p(r.id, "used")), true, "exclusive claim must exist before advancing time");
+    assert.ok(now() < Date.parse(r.expiresAt), "initial eligibility is still valid");
+    Date.now = () => Date.parse(r.expiresAt) + 1;
+    release();
+    const result = await consuming;
+    assert.deepEqual([result.ok, result.error, result.effectiveStatus], [false, "approval_expired", "consumed"]);
+    const rows = readFileSync(join(dir, "audit.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+    assert.ok(rows.some((row) => row.id === r.id && row.event === "consume_rejected_expired" && row.phase === "after_claim"));
+  } finally {
+    release();
+    if (consuming) await consuming.catch(() => {});
+    fsp.link = link; Date.now = now;
+  }
 });
 
 test("(e) revocation: revoke beats later consume; consume beats later revoke; exactly one wins concurrently", async () => {
