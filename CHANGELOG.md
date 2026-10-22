@@ -11,6 +11,15 @@ All notable changes to this project are documented here. The format follows
 `list_pending` returns `{items, nextCursor}`; request text, payload and queue limits are enforced; library TTLs over
 7 days are refused.
 
+### Security (independent release review, 2026-10-22)
+- Durability of the spent state across a host crash: the directory entry of every marker, request record and
+  archive move is fsynced after the link or rename, before any authority rests on it; and a record whose `.used`
+  marker is missing but which carries `consumedAt` or `revokedAt` reads as consumed or revoked, never as usable.
+- `list_pending` and `approval-gate list` build summaries record by record and drop payload text as each is read,
+  so a long denied history no longer has to fit in memory at once to list one page.
+- README: the display protection covers controls, bidirectional overrides and invisible characters; ordinary
+  look-alike letters from other scripts are shown unchanged.
+
 ### Security (2026-10-16 audit: AG-01 to AG-05)
 - AG-01: `assertConsumed(result, id, action, binding?)` accepts only a grant object issued by `consumeApproval` in the
   same process, once, before expiry. JSON copies (MCP responses, files, agent messages) and hand-built objects are

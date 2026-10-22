@@ -301,11 +301,34 @@ function serialize(req: ApprovalRequest): string {
   return text;
 }
 
+/**
+ * Makes a directory entry (a rename or link just made) durable: a data fsync alone leaves the name itself in the
+ * page cache, so a host crash could keep an older committed approval and lose the .used marker that spent it.
+ * Platforms whose directories cannot be opened or fsynced (Windows) are skipped; any other failure is reported.
+ */
+async function syncDir(dir: string): Promise<void> {
+  let fh;
+  try {
+    fh = await fs.open(dir, "r");
+  } catch (err) {
+    if (["EISDIR", "EPERM", "EACCES", "ENOTSUP", "EINVAL"].includes((err as NodeJS.ErrnoException).code ?? "")) return;
+    throw err;
+  }
+  try {
+    await fh.sync();
+  } catch (err) {
+    if (!["EINVAL", "ENOTSUP", "EPERM", "EBADF"].includes((err as NodeJS.ErrnoException).code ?? "")) throw err;
+  } finally {
+    await fh.close();
+  }
+}
+
 async function writeRequest(req: ApprovalRequest): Promise<void> {
   await ensureDirs();
   const dest = requestPath(req.id);
   const tmp = await writeAtomic(dest, serialize(req));
   await fs.rename(tmp, dest);
+  await syncDir(path.dirname(dest));
 }
 
 /**
@@ -318,6 +341,7 @@ async function claimMarker(p: string, content: string): Promise<boolean> {
   const tmp = await writeAtomic(p, content);
   try {
     await fs.link(tmp, p);
+    await syncDir(path.dirname(p)); // the marker's name is durable before any authority rests on it
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
@@ -421,8 +445,8 @@ async function reconciled(id: string, attempt = 0): Promise<ApprovalRequest | un
 async function effective(req: ApprovalRequest): Promise<EffectiveStatus> {
   if (req.status !== "approved") return req.status;
   const used = await readMarker(req.id, "used");
-  if (used?.startsWith("consume")) return "consumed";
-  if (used === "revoked" || used?.startsWith("revoked ")) return "revoked";
+  if (used?.startsWith("consume") || req.consumedAt !== undefined) return "consumed";
+  if (used === "revoked" || used?.startsWith("revoked ") || req.revokedAt !== undefined) return "revoked";
   if (used !== undefined) return "invalidated";
   if ((await readMarker(req.id, "committed")) !== "committed") return "approved_uncommitted";
   if (isPastExpiry(req)) return "approved_expired";
@@ -535,6 +559,20 @@ async function allViews(): Promise<RequestView[]> {
   return out;
 }
 
+/** Matching records as summaries, payload text dropped as each is read, so a long history is never held whole. */
+async function allSummaries(status?: RequestStatus): Promise<RequestSummary[]> {
+  await ensureDirs();
+  const out: RequestSummary[] = [];
+  for (const f of await requestEntries()) {
+    if (!f.endsWith(".json")) continue;
+    const req = await getRequest(f.slice(0, -5));
+    if (!req || (status && req.status !== status)) continue;
+    const { payloadCanonical: _omitted, ...summary } = req;
+    out.push(summary);
+  }
+  return out;
+}
+
 const byCreated = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
   a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 
@@ -546,13 +584,13 @@ export async function listRequestPage(status?: RequestStatus, limit = 50, cursor
   if (status !== undefined && !STATUSES.includes(status)) throw new Error("invalid request status");
   if (!Number.isInteger(limit) || limit < 1 || limit > LIMITS.page) throw new Error(`limit must be an integer from 1 to ${LIMITS.page}`);
   if (cursor !== undefined && !isValidId(cursor)) throw new Error("invalid page cursor");
-  let items = (await allViews()).filter((r) => !status || r.status === status).sort(byCreated);
+  let items = (await allSummaries(status)).sort(byCreated);
   if (cursor !== undefined) {
     const after = await readRaw(cursor);
     if (!after) throw new Error("unknown page cursor; restart the listing");
     items = items.filter((r) => byCreated(r, after) > 0);
   }
-  const page = items.slice(0, limit).map(({ payloadCanonical: _omitted, ...summary }) => summary);
+  const page = items.slice(0, limit);
   return items.length > limit ? { items: page, nextCursor: page[page.length - 1].id } : { items: page };
 }
 
@@ -580,10 +618,12 @@ async function moveNoClobber(from: string, to: string): Promise<boolean> {
       throw err;
     }
   }
+  await syncDir(path.dirname(to));
   // A concurrent archive run may have completed the same move first.
   await fs.unlink(from).catch((err: NodeJS.ErrnoException) => {
     if (err.code !== "ENOENT") throw err;
   });
+  await syncDir(path.dirname(from));
   return true;
 }
 

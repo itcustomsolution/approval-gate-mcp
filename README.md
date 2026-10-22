@@ -223,8 +223,9 @@ What the gate does protect against:
 - Reusing one approval for a second or different action (`consume_approval` is single-use and action-bound).
 - Using an approval after the request's expiry, races between approve/deny/expiry, guessed ids
   (128-bit random), malformed or hand-edited state files without a matching decision record, and
-  terminal escape sequences, bidirectional overrides and invisible or look-alike characters in request
-  text that try to disguise what you are approving (the CLI shows them as `\u` escapes).
+  terminal escape sequences, bidirectional overrides and invisible characters in request text that try to
+  disguise what you are approving (the CLI shows them as `\u` escapes). Ordinary look-alike letters from other
+  scripts (a Cyrillic "а" in a hostname) are shown as they are: read request text, do not skim it.
 
 What it does **not** protect against:
 
