@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - Unreleased
+
+- Retain at most the requested page limit plus one matching summary while listing a page; scanned-record bounds, cursor order and legacy listRequests behavior remain unchanged.
+- Replace the two timing-dependent regression checks with explicit synchronization barriers.
+
 ## [0.4.0] - 2026-10-22
 
 **Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
