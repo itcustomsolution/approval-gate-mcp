@@ -33,7 +33,7 @@ export const LIMITS = Object.freeze({
 });
 const MAX_RECORD_BYTES = 256 * 1024;
 const MAX_AUDIT_LINE_BYTES = 256 * 1024;
-// ponytail: listing and creation collect whole-directory scans; archive old requests (`approval-gate archive`) if a
+// Listing scans and creation scans have an absolute entry bound; archive old requests (`approval-gate archive`) if a
 // long-lived install nears this. Creation stops at half the cap, so self-denied requests from an agent cannot push
 // the directory to the point where the human-side listing fails (pending markers and orphans fit in the other half).
 const MAX_STATE_ENTRIES = 200_000;
@@ -567,20 +567,6 @@ async function allViews(): Promise<RequestView[]> {
   return out;
 }
 
-/** Matching records as summaries, payload text dropped as each is read, so a long history is never held whole. */
-async function allSummaries(status?: RequestStatus): Promise<RequestSummary[]> {
-  await ensureDirs();
-  const out: RequestSummary[] = [];
-  for (const f of await requestEntries()) {
-    if (!f.endsWith(".json")) continue;
-    const req = await getRequest(f.slice(0, -5));
-    if (!req || (status && req.status !== status)) continue;
-    const { payloadCanonical: _omitted, ...summary } = req;
-    out.push(summary);
-  }
-  return out;
-}
-
 const byCreated = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
   a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 
@@ -592,11 +578,34 @@ export async function listRequestPage(status?: RequestStatus, limit = 50, cursor
   if (status !== undefined && !STATUSES.includes(status)) throw new Error("invalid request status");
   if (!Number.isInteger(limit) || limit < 1 || limit > LIMITS.page) throw new Error(`limit must be an integer from 1 to ${LIMITS.page}`);
   if (cursor !== undefined && !isValidId(cursor)) throw new Error("invalid page cursor");
-  let items = (await allSummaries(status)).sort(byCreated);
+  await ensureDirs();
+  const after = cursor === undefined ? undefined : await readRaw(cursor);
+  if (cursor !== undefined && !after) throw new Error("unknown page cursor; restart the listing");
+  const items: RequestSummary[] = [];
+  const retained = limit + 1; // One continuation candidate; never the matching history.
+  let entries = 0;
+  for await (const f of streamEntries()) {
+    if (++entries > MAX_STATE_ENTRIES) {
+      throw new Error(`state directory has more than ${MAX_STATE_ENTRIES} entries; run \`approval-gate archive\` (it moves finished requests older than 8 days) or review it manually`);
+    }
+    if (!f.endsWith(".json")) continue;
+    const req = await getRequest(f.slice(0, -5));
+    if (!req || (status && req.status !== status) || (after && byCreated(req, after) <= 0)) continue;
+    let low = 0, high = items.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (byCreated(items[mid], req) <= 0) low = mid + 1;
+      else high = mid;
+    }
+    if (low >= retained) continue;
+    const { payloadCanonical: _omitted, ...summary } = req;
+    // Remove the largest before insertion, so retention never exceeds limit+1.
+    if (items.length === retained) items.pop();
+    items.splice(low, 0, summary);
+  }
   if (cursor !== undefined) {
-    const after = await readRaw(cursor);
-    if (!after) throw new Error("unknown page cursor; restart the listing");
-    items = items.filter((r) => byCreated(r, after) > 0);
+    const current = await readRaw(cursor);
+    if (!current || byCreated(current, after!) !== 0) throw new Error("unknown page cursor; restart the listing");
   }
   const page = items.slice(0, limit);
   return items.length > limit ? { items: page, nextCursor: page[page.length - 1].id } : { items: page };
