@@ -1,23 +1,28 @@
 # approval-gate-mcp
 
-> An MCP server that makes your AI agent stop and ask a human before it sends, deletes, publishes, pays or deploys.
+An MCP server and library for requesting a human decision before a consequential agent action. Approvals expire, are single-use and can bind an operation to an exact payload.
 
-[![npm](https://img.shields.io/npm/v/@itcustomsolution/approval-gate-mcp)](https://www.npmjs.com/package/@itcustomsolution/approval-gate-mcp)
-<!-- [![tests](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/itcustomsolution/approval-gate-mcp/actions/workflows/test.yml) -->
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**The trusted executor must enforce the approval.** Installing an MCP server does not prevent an agent from using another tool, and the gate is not a security boundary against processes with the same OS-user privileges. Read the [trusted execution boundary](#trusted-execution-boundary) and [threat model](#threat-model) before integration.
+
+## Release and verification
+
+As of **26 October 2026**, [v0.4.0 on GitHub](https://github.com/itcustomsolution/approval-gate-mcp/releases/tag/v0.4.0) and [0.4.0 on npm](https://www.npmjs.com/package/@itcustomsolution/approval-gate-mcp/v/0.4.0) are published. [PR #31 for 0.4.1](https://github.com/itcustomsolution/approval-gate-mcp/pull/31) is development work, not a published release in this snapshot.
+
+Requires **Node.js 22+**. See the [MIT license](LICENSE), [changelog](CHANGELOG.md) and [test suite](test/). The [0.4.0 release-preparation run](https://github.com/itcustomsolution/approval-gate-mcp/actions/runs/39725112037) passed the build and tests on Node 22, 24 and 26 at its recorded revision. The quickstart below pins the published package; run `npm test` for your own checkout.
 
 ## Why
-Agents are good at doing things. The hard part is making sure the consequential things
-(sending an email, deleting data, publishing, spending money) only happen when a human
-said yes. This server is that gate, extracted from a system I have run in production
-for years: after an automation incident taught me the lesson the hard way, my standing
-rule became *no automated destructive action without a human gate, ever*. This is the
-generic, reusable version of that rule.
+Sending, deleting, publishing, spending and deploying need a decision tied to the actual
+operation. A general instruction to "ask first" leaves the executor to interpret an
+informal conversation. This project records a specific request, a human decision, an
+expiry and a single-use consume step that trusted execution code can enforce.
+
+Use it when you control that execution boundary. If an agent can bypass it through a
+shell, another tool or direct file access, adding this server alone cannot enforce approval.
 
 ## 30-second quickstart
 
 ```bash
-claude mcp add approval-gate -- npx -y @itcustomsolution/approval-gate-mcp
+claude mcp add approval-gate -- npx -y @itcustomsolution/approval-gate-mcp@0.4.0
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
@@ -27,13 +32,13 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "approval-gate": {
       "command": "npx",
-      "args": ["-y", "@itcustomsolution/approval-gate-mcp"]
+      "args": ["-y", "@itcustomsolution/approval-gate-mcp@0.4.0"]
     }
   }
 }
 ```
 
-Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-mcp approval-gate list`.
+Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-mcp@0.4.0 approval-gate list`.
 
 ## Example
 
@@ -41,7 +46,7 @@ Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-
    `action: "send email to alice@example.com, subject: Invoice 1042"` and gets back id `a1b2c3d4e5f6`.
 2. It calls `wait_for_approval`. Nothing is sent.
 3. In your own terminal: `approval-gate list`, then `approval-gate approve a1b2c3d4e5f6 looks right`.
-4. The agent sees `approved`, calls `consume_approval` with the same id and the exact same action text (single use), and only then sends. Had you denied, ignored it, or let it expire, the answer is no.
+4. The agent can observe `approved`, but that status does not authorize sending. The trusted executor calls `executeApproved` for that id and the exact action (plus operation/payload binding, if present) immediately around its send function. See [Trusted execution boundary](#trusted-execution-boundary). It must not accept an agent-supplied or MCP JSON result as proof. Denial, timeout or expiry prevents a successful consume.
 5. `~/.approval-gate/audit.jsonl` now has the request and your decision.
 
 ## Design principles
@@ -80,15 +85,17 @@ dependency needs Node 20+).
 From npm:
 
 ```bash
-npm install -g @itcustomsolution/approval-gate-mcp   # installs `approval-gate` and `approval-gate-mcp`
+npm install -g @itcustomsolution/approval-gate-mcp@0.4.0   # installs `approval-gate` and `approval-gate-mcp`
 ```
 
 From source:
 
 ```bash
-npm install
-npm run build
-npm link        # makes `approval-gate` and `approval-gate-mcp` available on PATH
+git clone --branch v0.4.0 --depth 1 https://github.com/itcustomsolution/approval-gate-mcp.git
+cd approval-gate-mcp
+npm ci --ignore-scripts
+npm test        # builds the source and runs the tests
+node dist/cli.js list
 ```
 
 
@@ -268,11 +275,10 @@ on an approved request) cancels an approval that has not been consumed yet.
 
 ## Why so small?
 
-Because the pattern matters more than the plumbing. In my production systems this same
-shape (request, out-of-band human decision, fail-closed default, audit trail) sits in
-front of email, publishing, and deployments, and it has removed entire classes of
-automation incidents. Start small, gate the scary
-things, and let your incident postmortems tell you what to gate next.
+The package concentrates on requests, decisions, expiry, consumption and local records.
+Your integration supplies the actual operation and decides where to enforce it. Keeping
+that responsibility explicit makes the boundary easier to review and the limitations
+easier to test.
 
 ## Contributing
 
