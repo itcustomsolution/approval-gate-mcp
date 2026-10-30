@@ -43,7 +43,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "hono": "^4.13.13",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

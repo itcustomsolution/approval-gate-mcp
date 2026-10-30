@@ -10,6 +10,14 @@ All notable changes to this project are documented here. The format follows
 - Retain at most the requested page limit plus one matching summary while listing a page; scanned-record bounds, cursor order and legacy listRequests behavior remain unchanged.
 - Replace the two timing-dependent regression checks with explicit synchronization barriers.
 
+### Security
+- Upgrade `zod` from 3.25.76 to 4.6.7 to fix GHSA-mrhx-c7xc-m3w5 (memory exhaustion while validating oversized
+  constrained collections); `npm audit fix` also updates `body-parser` and `fast-uri`. `npm audit` reports no
+  vulnerabilities.
+- Advertised tool input schemas no longer carry `"additionalProperties": false`. Runtime handling is unchanged:
+  unknown arguments were dropped before and are dropped now. The previous schema overstated a strictness the server
+  never enforced.
+
 ## [0.4.0] - 2026-10-22
 
 **Breaking:** `assertConsumed` no longer accepts arbitrary well-shaped objects; Node 22 or later is required;
