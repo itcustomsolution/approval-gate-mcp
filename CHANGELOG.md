@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.4.1] - Unreleased
+## [0.4.1] - 2026-10-30
 
 - Retain at most the requested page limit plus one matching summary while listing a page; scanned-record bounds, cursor order and legacy listRequests behavior remain unchanged.
 - Replace the two timing-dependent regression checks with explicit synchronization barriers.
