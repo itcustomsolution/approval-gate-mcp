@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, unlinkSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 
 let store, dir;
 before(async () => {
@@ -81,4 +83,40 @@ test("AG-02: streamed pages preserve total order, ties, filters and continuation
     assert.equal(new Set(seen).size, seen.length);
   }
   await assert.rejects(store.listRequestPage(undefined, 2, "ffffffffffff"), /unknown page cursor/);
+});
+
+test("AG-02: a page scan keeps at most limit+1 summaries alive, not the matching history", async () => {
+  setFlagsFromString("--expose-gc");
+  const gc = runInNewContext("gc");
+  for (let i = 0; i < 40; i++) {
+    const r = await store.createRequest("membound " + i, "synthetic fixture", 3600);
+    await store.decide(r.id, false);
+    // Oldest matches in the directory, so the bounded scan must retain these and nothing from earlier tests.
+    const file = join(dir, "requests", r.id + ".json");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), createdAt: new Date(Date.UTC(2000, 0, 1, 0, 0, i)).toISOString() }));
+  }
+  // Tag each parsed fixture record with an object; the summary spread keeps the reference, so a live tag is a
+  // retained summary. Every record read is a checkpoint: collect garbage, then count what the scan still holds.
+  const tags = [];
+  let peak = 0;
+  const parse = JSON.parse;
+  JSON.parse = (...args) => {
+    gc();
+    peak = Math.max(peak, tags.filter((t) => t.deref()).length);
+    const value = parse(...args);
+    if (typeof value?.action === "string" && value.action.startsWith("membound ")) {
+      value.tag = {};
+      tags.push(new WeakRef(value.tag));
+    }
+    return value;
+  };
+  try {
+    await store.listRequestPage("denied", 2);
+  } finally {
+    JSON.parse = parse;
+  }
+  assert.ok(tags.length >= 40, "every fixture record was read");
+  assert.ok(peak >= 2, `tags must reach retained summaries (peak ${peak}); otherwise this test proves nothing`);
+  // limit+1 retained, plus the record in flight between its read and the retention decision.
+  assert.ok(peak <= 2 + 2, `peak=${peak}: scan held ${peak} summaries alive for a page of 2`);
 });
