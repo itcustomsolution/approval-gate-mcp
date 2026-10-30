@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Add a regression test that fails if page listing stops bounding retained summaries to the page limit plus one (the 0.4.0 store holds every matching summary and fails it).
+
 ## [0.4.1] - 2026-10-30
 
 - Retain at most the requested page limit plus one matching summary while listing a page; scanned-record bounds, cursor order and legacy listRequests behavior remain unchanged.
