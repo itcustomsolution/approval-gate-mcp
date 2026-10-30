@@ -208,7 +208,9 @@ moves only finished requests that were created and expired at least 8 days ago, 
 still be used. An MCP client can create and deny its own requests without a human, so it can fill
 `requests/` up to the creation limit; that blocks new requests (an availability limit, like the queue
 cap), never a human's decisions. Each listing page reads every request file, so listing slows down as
-history grows until you archive.
+history grows until you archive. Paginated listing streams directory entries and retains at most the requested
+page plus one continuation summary, without payload text. The legacy `listRequests` API intentionally returns
+all matching full records and is not memory-bounded by page size.
 
 ## State
 

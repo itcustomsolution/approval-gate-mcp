@@ -65,23 +65,28 @@ test("RA-AG-02: a reader expiring a record while archive runs never recreates th
   const r = await store.createRequest("old", "r", 3600);
   const old = new Date(Date.now() - 40 * 86_400_000).toISOString();
   writeFileSync(reqFile(r.id), JSON.stringify({ ...JSON.parse(readFileSync(reqFile(r.id), "utf8")), createdAt: old, expiresAt: old }));
-  // Pause the reader at its first write after the expiry claim, if it makes one, while archive runs.
-  const rename = fsp.rename;
-  let release;
-  const gate = new Promise((res) => { release = res; });
-  fsp.rename = async function (a, b, ...rest) {
-    if (String(b) === reqFile(r.id) && String(a).endsWith(".tmp")) await gate;
-    return rename.call(this, a, b, ...rest);
+  // The expiry marker is actually linked before archive runs; no scheduling sleep.
+  const link = fsp.link;
+  let release, reached, reader;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const claimed = new Promise((resolve) => { reached = resolve; });
+  fsp.link = async function (from, to, ...rest) {
+    await link.call(this, from, to, ...rest);
+    if (String(to) === join(dir, "requests", `${r.id}.final`)) { reached(); await gate; }
   };
   try {
-    const reader = store.getRequest(r.id);
-    await new Promise((res) => setTimeout(res, 50));
+    reader = store.getRequest(r.id);
+    await Promise.race([claimed, reader.then(() => assert.fail("reader finished before expiry-claim barrier"))]);
+    assert.equal(readFileSync(join(dir, "requests", `${r.id}.final`), "utf8"), "expired");
     const moved = await store.archiveRequests(8);
+    assert.equal(moved, 1);
+    assert.equal(existsSync(reqFile(r.id)), false, "archive moved the record while reader was held");
     release();
     await reader;
-    assert.equal(moved, 1);
   } finally {
-    fsp.rename = rename;
+    release();
+    if (reader) await reader.catch(() => {});
+    fsp.link = link;
   }
   assert.equal(existsSync(reqFile(r.id)), false, "archived record was recreated in requests/");
   assert.equal(existsSync(join(dir, "archive", `${r.id}.json`)), true);
