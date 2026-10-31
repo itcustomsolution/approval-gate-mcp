@@ -6,9 +6,9 @@ An MCP server and library for requesting a human decision before a consequential
 
 ## Release and verification
 
-As of **26 October 2026**, [v0.4.0 on GitHub](https://github.com/itcustomsolution/approval-gate-mcp/releases/tag/v0.4.0) and [0.4.0 on npm](https://www.npmjs.com/package/@itcustomsolution/approval-gate-mcp/v/0.4.0) are published. [PR #31 for 0.4.1](https://github.com/itcustomsolution/approval-gate-mcp/pull/31) is development work, not a published release in this snapshot.
+As of **31 October 2026**, [v0.4.1 on GitHub](https://github.com/itcustomsolution/approval-gate-mcp/releases/tag/v0.4.1) and [0.4.1 on npm](https://www.npmjs.com/package/@itcustomsolution/approval-gate-mcp/v/0.4.1) are published. Source changes, GitHub releases and registry publication are separate states; these links identify the released version.
 
-Requires **Node.js 22+**. See the [MIT license](LICENSE), [changelog](CHANGELOG.md) and [test suite](test/). The [0.4.0 release-preparation run](https://github.com/itcustomsolution/approval-gate-mcp/actions/runs/39725112037) passed the build and tests on Node 22, 24 and 26 at its recorded revision. The quickstart below pins the published package; run `npm test` for your own checkout.
+Requires **Node.js 22+**. See the [MIT license](LICENSE), [changelog](CHANGELOG.md) and [test suite](test/). The [0.4.1 release notes](https://github.com/itcustomsolution/approval-gate-mcp/releases/tag/v0.4.1) describe the shipped changes. Tests apply to the revision and environment where they ran; they do not establish production certification. The quickstart below pins the published package; run `npm test` for your own checkout.
 
 ## Why
 Sending, deleting, publishing, spending and deploying need a decision tied to the actual
@@ -22,7 +22,7 @@ shell, another tool or direct file access, adding this server alone cannot enfor
 ## 30-second quickstart
 
 ```bash
-claude mcp add approval-gate -- npx -y @itcustomsolution/approval-gate-mcp@0.4.0
+claude mcp add approval-gate -- npx -y @itcustomsolution/approval-gate-mcp@0.4.1
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
@@ -32,13 +32,13 @@ Claude Desktop (`claude_desktop_config.json`):
   "mcpServers": {
     "approval-gate": {
       "command": "npx",
-      "args": ["-y", "@itcustomsolution/approval-gate-mcp@0.4.0"]
+      "args": ["-y", "@itcustomsolution/approval-gate-mcp@0.4.1"]
     }
   }
 }
 ```
 
-Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-mcp@0.4.0 approval-gate list`.
+Approve or deny from your terminal with `npx -p @itcustomsolution/approval-gate-mcp@0.4.1 approval-gate list`.
 
 ## Example
 
@@ -85,13 +85,13 @@ dependency needs Node 20+).
 From npm:
 
 ```bash
-npm install -g @itcustomsolution/approval-gate-mcp@0.4.0   # installs `approval-gate` and `approval-gate-mcp`
+npm install -g @itcustomsolution/approval-gate-mcp@0.4.1   # installs `approval-gate` and `approval-gate-mcp`
 ```
 
 From source:
 
 ```bash
-git clone --branch v0.4.0 --depth 1 https://github.com/itcustomsolution/approval-gate-mcp.git
+git clone --branch v0.4.1 --depth 1 https://github.com/itcustomsolution/approval-gate-mcp.git
 cd approval-gate-mcp
 npm ci --ignore-scripts
 npm test        # builds the source and runs the tests
@@ -281,6 +281,12 @@ The package concentrates on requests, decisions, expiry, consumption and local r
 Your integration supplies the actual operation and decides where to enforce it. Keeping
 that responsibility explicit makes the boundary easier to review and the limitations
 easier to test.
+
+## Applying the gate to a workflow
+
+This is an inspectable approval component. A working integration still needs a trusted executor, access controls, failure handling and end-to-end acceptance checks for the actual operation. A package install or passing test suite does not establish that a live workflow enforces approval or meets a compliance requirement.
+
+For help defining owners, exceptions and evidence around one IT workflow, see ITC's [IT Operations Workflow Review](https://itcustomsolution.com/practices/consulting). Implementation and operation are separately scoped; the review does not supply an enforcement boundary or certify an integration.
 
 ## Contributing
 
