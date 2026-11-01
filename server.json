@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.itcustomsolution/approval-gate-mcp",
-  "description": "Fail-closed human approval gates for AI agent actions. Default-deny, TTL expiry, audit log.",
+  "description": "Expiring, single-use human approvals for agent actions. Enforcement requires a trusted executor.",
   "repository": {
     "url": "https://github.com/itcustomsolution/approval-gate-mcp",
     "source": "github"
   },
-  "version": "0.4.1",
+  "version": "0.4.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@itcustomsolution/approval-gate-mcp",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "transport": {
         "type": "stdio"
       }

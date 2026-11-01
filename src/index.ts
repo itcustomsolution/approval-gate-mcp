@@ -15,7 +15,7 @@ import { z } from "zod";
 import { createRequest, decide, getRequest, listRequestPage, gateDir, consumeApproval, isValidId, LIMITS } from "./store.js";
 import { safe } from "./display.js";
 
-const VERSION = "0.4.1";
+const VERSION = "0.4.2";
 const server = new McpServer({ name: "approval-gate", version: VERSION });
 
 function text(data: unknown) {
