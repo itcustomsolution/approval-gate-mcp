@@ -1,0 +1,98 @@
+name: Publish approved MCP listing
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Only the existing owner account may start this fixed-version workflow
+    # from the default branch. There is no PR, tag-push or scheduled trigger.
+    if: github.repository == 'itcustomsolution/approval-gate-mcp' && github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' && github.actor == 'Lu-ITC' && github.triggering_actor == 'Lu-ITC'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXPECTED_REPOSITORY: itcustomsolution/approval-gate-mcp
+      EXPECTED_DEFAULT_BRANCH: master
+      EXPECTED_SERVER: io.github.itcustomsolution/approval-gate-mcp
+      EXPECTED_PACKAGE: '@itcustomsolution/approval-gate-mcp'
+      EXPECTED_VERSION: 0.4.2
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - name: Read the approved release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: refs/tags/v0.4.2
+          persist-credentials: false
+      - name: Verify merged release identity and existing npm publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I - <<'PYTHON'
+          import json, os, subprocess, urllib.parse, urllib.request
+          def read(url):
+              request = urllib.request.Request(url, headers={"User-Agent": "ITC-MCP-release-check"})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          expected = os.environ["EXPECTED_VERSION"]
+          repository = os.environ["EXPECTED_REPOSITORY"]
+          sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          comparison = read(f"https://api.github.com/repos/{repository}/compare/{sha}...{os.environ['EXPECTED_DEFAULT_BRANCH']}")
+          assert comparison["status"] in ("identical", "ahead"), "Release tag must be merged into the default branch"
+          with open("server.json") as source:
+              descriptor = json.load(source)
+          assert descriptor["name"] == os.environ["EXPECTED_SERVER"]
+          assert descriptor["version"] == expected
+          assert descriptor["repository"]["url"] == f"https://github.com/{repository}"
+          assert len(descriptor["packages"]) == 1
+          package = descriptor["packages"][0]
+          assert package["registryType"] == "npm"
+          assert package["identifier"] == os.environ["EXPECTED_PACKAGE"]
+          assert package["version"] == expected
+          published = read("https://registry.npmjs.org/" + urllib.parse.quote(package["identifier"], safe="") + "/" + expected)
+          assert published["name"] == package["identifier"]
+          assert published["version"] == expected
+          assert published["mcpName"] == descriptor["name"]
+          print(f"Verified {descriptor['name']} {expected} at merged commit {sha}")
+          PYTHON
+      - name: Install the signature verifier
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify the pinned publisher
+        id: publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_dir="$(mktemp -d "${RUNNER_TEMP}/itc-mcp-publisher.XXXXXX")"
+          cd "$tool_dir"
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+          printf 'binary=%s/mcp-publisher\n' "$tool_dir" >> "$GITHUB_OUTPUT"
+      - name: Validate the reviewed descriptor
+        env:
+          MCP_PUBLISHER: ${{ steps.publisher.outputs.binary }}
+        run: '"$MCP_PUBLISHER" validate'
+      - name: Authenticate through the repository's GitHub Actions identity
+        env:
+          MCP_PUBLISHER: ${{ steps.publisher.outputs.binary }}
+        run: '"$MCP_PUBLISHER" login github-oidc'
+      - name: Publish the fixed approved Registry version
+        env:
+          MCP_PUBLISHER: ${{ steps.publisher.outputs.binary }}
+        run: '"$MCP_PUBLISHER" publish'
+      - name: Remove the ephemeral Registry session
+        if: always() && steps.publisher.outcome == 'success'
+        env:
+          MCP_PUBLISHER: ${{ steps.publisher.outputs.binary }}
+        run: '"$MCP_PUBLISHER" logout'
