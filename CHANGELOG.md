@@ -3,7 +3,10 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses semantic versioning.
 
-## [Unreleased]
+## [0.4.2] - Prepared for release
+
+- Refresh package-page documentation and project links to match the public ITC documentation.
+- Clarify the tool's scope and the separately scoped services inquiry path; no runtime behavior changes.
 
 - Add a regression test that fails if page listing stops bounding retained summaries to the page limit plus one (the 0.4.0 store holds every matching summary and fails it).
 

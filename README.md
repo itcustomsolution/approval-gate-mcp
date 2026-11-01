@@ -288,6 +288,8 @@ This is an inspectable approval component. A working integration still needs a t
 
 For help defining owners, exceptions and evidence around one IT workflow, see ITC's [IT Operations Workflow Review](https://itcustomsolution.com/practices/consulting). Implementation and operation are separately scoped; the review does not supply an enforcement boundary or certify an integration.
 
+The review covers one workflow: process map, exceptions, evidence gaps, ownership and access, prioritized actions, and handover. An automation brief is included only if justified. Scope, timing and fees follow inquiry; implementation is separate.
+
 ## Contributing
 
 Issues and pull requests are welcome. Keep changes small and fail-closed: anything that
